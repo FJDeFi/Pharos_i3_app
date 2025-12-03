@@ -813,7 +813,7 @@
                     <div class="summary-divider"></div>
                     <div class="summary-item total-price">
                         <span class="summary-label">Total Price:</span>
-                        <span class="summary-value" id="modalTotal">0.00 USDC</span>
+                        <span class="summary-value" id="modalTotal">0.00 PHRS</span>
                     </div>
                 </div>
                 <div class="order-items" id="modalOrderItems">
@@ -1037,7 +1037,7 @@
             } catch (error) {
                 console.error('❌ Firebase 初始化失败:', error);
                 const el = document.getElementById('googleSignInStatus');
-                if (el) el.textContent = 'Firebase 加载失败，请刷新页面重试';
+                if (el) el.textContent = 'Firebase load failed, please refresh the page';
             }
         }
 
@@ -1047,7 +1047,7 @@
                 // 双重检查：确保 Firebase 已初始化
                 if (!firebaseAuth || !firebaseApp) {
                     console.error('❌ Firebase 未初始化');
-                    alert('Firebase 还未加载完成，请稍后再试');
+                    alert('Firebase is still loading, please try again later');
                     return;
                 }
                 
@@ -1095,7 +1095,7 @@
                 console.error('❌ Log in failed:', error);
                 if (error.code === 'auth/unauthorized-domain') {
                     const el = document.getElementById('googleSignInStatus');
-                    if (el) el.textContent = '域名未授权，请在 Firebase 控制台添加当前域名';
+                    if (el) el.textContent = 'Domain not authorized, please add current domain in Firebase console';
                 } else {
                     const el = document.getElementById('googleSignInStatus');
                     if (el) el.textContent = 'Log in failed: ' + error.message;
@@ -1294,7 +1294,7 @@
                         // 执行本地签到
                         const result = window.walletManager.dailyCheckin();
                         if (!result || !result.success) {
-                            alert(result?.error || '签到失败，请稍后重试');
+                            alert(result?.error || 'Check-in failed, please try again later');
                             return;
                         }
 
@@ -1362,7 +1362,7 @@
                 
             } catch (error) {
                 console.error('签到失败:', error);
-                alert('签到失败: ' + error.message);
+                alert('Check-in failed: ' + error.message);
             }
         };
 
@@ -1400,7 +1400,7 @@
         window.handleGoogleLogout = async function() {
             try {
                 if (!firebaseAuth) {
-                    alert('Firebase 未初始化');
+                    alert('Firebase not initialized');
                     return;
                 }
                 
@@ -1421,7 +1421,7 @@
                 
             } catch (error) {
                 console.error('❌ 登出失败:', error);
-                alert('登出失败: ' + error.message);
+                alert('Logout failed: ' + error.message);
             }
         };
 
@@ -1464,7 +1464,7 @@
         // 检查 Firebase 状态并显示钱包模态框
         window.checkFirebaseAndShowWalletModal = function(event) {
             if (!window.firebaseDb) {
-                alert('Firebase 加载中，请稍后再试...');
+                alert('Firebase is loading, please try again later...');
                 return;
             }
             showWalletSelectionModal(event);
@@ -1714,7 +1714,7 @@
                 localStorage.setItem('walletConnected', 'true');
             } catch (err) {
                 console.error('❌ 写入钱包信息到 Firestore 失败:', err);
-                alert('保存钱包信息失败：' + err.message);
+                alert('Failed to save wallet info: ' + err.message);
             }
         };
 
@@ -1781,17 +1781,17 @@
             
             <div class="wallet-modal-header">
                 <h2 class="wallet-modal-title">Log in or sign up</h2>
-                <p class="wallet-modal-subtitle">Log in and connect wallet to earn USDC credits</p>
+                <p class="wallet-modal-subtitle">Log in and connect wallet to earn PHRS credits</p>
             </div>
 
             <div class="wallet-options">
-                <div class="wallet-option available" onclick="connectSolanaPhantom()">
+                <div class="wallet-option available" onclick="connectMetaMaskWallet()">
                     <span class="wallet-icon-wrap">
-                        <img src="svg/phantom.svg" alt="Phantom">
+                        <img src="svg/metamask.svg" alt="MetaMask">
                     </span>
                     <div class="wallet-info">
-                        <div class="wallet-name">Phantom (Solana Devnet)</div>
-                        <div class="wallet-desc">Pay and check in with USDC on Solana Devnet</div>
+                        <div class="wallet-name">MetaMask (Pharos Testnet)</div>
+                        <div class="wallet-desc">Pay with PHRS on Pharos Testnet</div>
                     </div>
                 </div>
 
@@ -1810,7 +1810,7 @@
             
             <div class="wallet-modal-header">
                 <h2 class="wallet-modal-title">✅ Check-In on Chain</h2>
-                <p class="wallet-modal-subtitle">Complete your daily on-chain check-in to earn USDC credits</p>
+                <p class="wallet-modal-subtitle">Complete your daily on-chain check-in to earn PHRS credits</p>
             </div>
 
             <div id="userStatusSection" style="margin: 20px 0; padding: 16px; background: #f0fdf4; border-radius: 12px;">
@@ -1833,12 +1833,12 @@
             <div style="margin: 20px 0;">
                 <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">Network</label>
                 <select id="chainSelector" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;" disabled>
-                    <option value="SOLANA">Solana (Devnet)</option>
+                    <option value="PHAROS_TESTNET">Pharos Testnet</option>
                 </select>
             </div>
 
             <div style="margin: 20px 0; padding: 12px; background: #fef3c7; border-radius: 8px; border: 1px solid #fcd34d;">
-                <p style="font-size: 13px; color: #92400e; margin: 0;">⛽ Gas fee: ≈0.00025 USDC per call</p>
+                <p style="font-size: 13px; color: #92400e; margin: 0;">⛽ Gas fee: ≈0.00025 PHRS per call</p>
             </div>
 
             <button id="executeCheckInBtn" onclick="executeOnChainCheckIn()" 

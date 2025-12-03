@@ -543,9 +543,9 @@ function updateWalletUI(address, credits) {
 
     setWalletTypeIcon(window.walletManager?.walletType || null);
 
-    // 不再显示I3 tokens，改为显示USDC（仅Solana）
+    // 不再显示I3 tokens，改为显示PHRS（仅Solana）
     if (usdcDisplay && address && window.walletManager?.walletType?.includes('solana')) {
-        window.walletManager?.updateUSDCBalance?.();
+        window.walletManager?.updatePHRSBalance?.();
     } else if (usdcDisplay) {
         // 未连接或非Solana钱包：隐藏
         usdcDisplay.style.display = 'none';
@@ -783,9 +783,9 @@ window.addEventListener('dailyCheckinSuccess', function(event) {
     const { reward, newBalance, totalCheckins } = event.detail;
     
     // 不再显示I3 tokens
-    // 如果是Solana钱包，更新USDC余额
+    // 如果是Solana钱包，更新PHRS余额
     if (window.walletManager?.walletType?.includes('solana')) {
-        window.walletManager?.updateUSDCBalance?.();
+        window.walletManager?.updatePHRSBalance?.();
     }
     
     updateCheckinButton();
@@ -799,9 +799,9 @@ window.addEventListener('creditsSpent', function(event) {
     const { amount, newBalance, reason } = event.detail;
     
     // 不再显示I3 tokens
-    // 如果是Solana钱包，更新USDC余额
+    // 如果是Solana钱包，更新PHRS余额
     if (window.walletManager?.walletType?.includes('solana')) {
-        window.walletManager?.updateUSDCBalance?.();
+        window.walletManager?.updatePHRSBalance?.();
     }
     
     showNotification(`Spent ${amount} I3 tokens for ${reason}`, 'success');
@@ -855,10 +855,11 @@ window.showNotification = showNotification;
 window.initializeWalletUI = initializeWalletUI;
 window.showWalletSelectionModal = showWalletSelectionModal;
 window.closeWalletModal = closeWalletModal;
-window.connectMetaMaskWallet = () => notifyUnsupportedWallet('MetaMask');
-window.connectCoinbaseWallet = () => notifyUnsupportedWallet('Coinbase Wallet');
+window.connectMetaMaskWallet = connectMetaMaskWallet;
+window.connectSolanaPhantom = () =>
+  notifyUnsupportedWallet('Phantom (Solana wallets are not supported in this build)');
 window.connectWalletConnect = () => notifyUnsupportedWallet('WalletConnect');
-window.connectSolanaPhantom = connectSolanaPhantom;
+window.connectCoinbaseWallet = () => notifyUnsupportedWallet('Coinbase Wallet');
 
 
 console.log('✅ Wallet integration functions loaded successfully');
@@ -871,9 +872,13 @@ function getAddChainParams(preferred) {
     '0x2105': { chainName:'Base',             rpcUrls:['https://mainnet.base.org'] },
     '0xa4b1': { chainName:'Arbitrum One',     rpcUrls:['https://arb1.arbitrum.io/rpc'] },
     '0x144':  { chainName:'ZKsync Era',       rpcUrls:['https://mainnet.era.zksync.io'] },
-    '0x44d':   { chainName:'Polygon zkEVM',    rpcUrls:['https://zkevm-rpc.com'] },
+    '0x44d':  { chainName:'Polygon zkEVM',    rpcUrls:['https://zkevm-rpc.com'] },
     '0xa':    { chainName:'Optimism',         rpcUrls:['https://mainnet.optimism.io'] },
-    '0xcc':   { chainName:'opBNB', rpcUrls:['https://opbnb-mainnet-rpc.bnbchain.org'] },
+    '0xcc':   { chainName:'opBNB',            rpcUrls:['https://opbnb-mainnet-rpc.bnbchain.org'] },
+    '0xa8230': {
+      chainName: 'Pharos Testnet',
+      rpcUrls: ['https://api.zan.top/node/v1/pharos/testnet/35905838255149eaa94c610c79294f0f']
+    },
   };
   const base = MAP[preferred.chainId] || { chainName: preferred.name, rpcUrls: [] };
   return { chainId: preferred.chainId, chainName: base.chainName, rpcUrls: base.rpcUrls, nativeCurrency:{name:'ETH',symbol:'ETH',decimals:18} };
@@ -892,7 +897,8 @@ function mapChainIdToDisplay(chainId, walletType, solanaNetworkHint) {
     '0xa4b1':  { name:'Arbitrum One',  icon:'svg/chains/arbitrum.svg' },
     '0x2105':  { name:'Base',          icon:'svg/chains/base.svg' },
     '0x144':   { name:'ZKsync Era',    icon:'svg/chains/zksync.svg' },
-    '0xcc':    { name:'opBNB', icon:'svg/chains/opbnb.svg' },
+    '0xcc':    { name:'opBNB',         icon:'svg/chains/opbnb.svg' },
+    '0xa8230': { name:'Pharos Testnet', icon:'svg/chains/pharos.jpg' },
   };
   // Solana（用 walletType + network hint）
   if ((walletType || '').startsWith('solana')) {
@@ -1042,25 +1048,17 @@ function selectNetwork(key) {
 
 // ===== Preferred Network (pre-connect) =====
 const I3_NETWORKS = {
-  'solana-mainnet': { 
-    kind: 'solana', 
-    key: 'solana-mainnet', 
-    name: 'Solana (Mainnet)', 
-    icon: 'svg/chains/solana.svg', 
-    network: 'mainnet-beta',
-    rpcEndpoint: 'https://mainnet.helius-rpc.com/?api-key=fd6a5779-892d-47eb-a88b-bc961ca4b606',
-    usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    explorerBaseUrl: 'https://explorer.solana.com/tx'
-  },
-  'solana-devnet': { 
-    kind: 'solana', 
-    key: 'solana-devnet', 
-    name: 'Solana (Devnet)', 
-    icon: 'svg/chains/solana.svg', 
-    network: 'devnet',
-    rpcEndpoint: 'https://api.devnet.solana.com',
-    usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-    explorerBaseUrl: 'https://explorer.solana.com/tx?cluster=devnet'
+  'pharos-testnet': {
+    kind: 'evm',
+    key: 'pharos-testnet',
+    name: 'Pharos Testnet',
+    icon: 'svg/chains/pharos.jpg', // 临时复用一个现有图标，你可以以后换成 pharos 图标
+    network: 'pharos-testnet',
+    chainId: '0xa8230', // 688688
+    rpcEndpoint: 'https://api.zan.top/node/v1/pharos/testnet/35905838255149eaa94c610c79294f0f',
+    // 下面两个只是为了兼容旧的 updateNetworkConfig，不会真正用到
+    usdcMint: '0x0000000000000000000000000000000000000000',
+    explorerBaseUrl: 'https://pharos-testnet.socialscan.io/tx'
   }
 };
 
@@ -1070,20 +1068,17 @@ function getPreferredNetwork() {
     const data = raw ? JSON.parse(raw) : null;
     if (data && I3_NETWORKS[data.key]) return I3_NETWORKS[data.key];
   } catch {}
-  // 默认使用 mainnet
-  return I3_NETWORKS['solana-mainnet'];
+  // 默认使用 Pharos Testnet
+  return I3_NETWORKS['pharos-testnet'];
 }
 
 function setPreferredNetwork(key) {
-  const n = I3_NETWORKS[key] || I3_NETWORKS['solana-mainnet'];
+  const n = I3_NETWORKS[key] || I3_NETWORKS['pharos-testnet'];
   localStorage.setItem('i3_preferred_network', JSON.stringify({ key: n.key }));
-  
-  // 更新全局配置
+  // 更新全局配置（主要是给 MCP 用 explorerBaseUrl）
   updateNetworkConfig(n);
-  
   // 刷新徽章
   renderNetworkBadge({ name: n.name, icon: n.icon });
-  
   // 触发网络变更事件
   window.dispatchEvent(new CustomEvent('networkChanged', { detail: n }));
 }

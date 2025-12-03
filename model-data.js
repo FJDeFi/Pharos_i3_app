@@ -3666,11 +3666,11 @@ const MODEL_DATA = {
         }
     };
     
-    const PRICE_MIN_USDC = 0.00001;
-    const PRICE_MAX_USDC = 0.0001;
-    const SHARE_MIN_USDC = 1;
-    const SHARE_MAX_USDC = 20;
-    const GAS_DEFAULT_USDC = 0.00025;
+    const PRICE_MIN_PHRS = 0.00001;
+    const PRICE_MAX_PHRS = 0.0001;
+    const SHARE_MIN_PHRS = 1;
+    const SHARE_MAX_PHRS = 20;
+    const GAS_DEFAULT_PHRS = 0.00025;
     
     function hashToUnitInterval(input) {
         let hash = 0;
@@ -3684,16 +3684,16 @@ const MODEL_DATA = {
         const priceSeed = hashToUnitInterval(modelName || String(index));
         const shareSeed = hashToUnitInterval(`${modelName || index}-share`);
     
-        const priceValue = PRICE_MIN_USDC + priceSeed * (PRICE_MAX_USDC - PRICE_MIN_USDC);
-        const shareValue = SHARE_MIN_USDC + shareSeed * (SHARE_MAX_USDC - SHARE_MIN_USDC);
+        const priceValue = PRICE_MIN_PHRS + priceSeed * (PRICE_MAX_PHRS - PRICE_MIN_PHRS);
+        const shareValue = SHARE_MIN_PHRS + shareSeed * (SHARE_MAX_PHRS - SHARE_MIN_PHRS);
     
         modelData.pricePerApiCallUsdc = Number(priceValue.toFixed(5));
         modelData.gasEstimatePerCallUsdc = Number.isFinite(modelData.gasEstimatePerCallUsdc)
             ? modelData.gasEstimatePerCallUsdc
-            : GAS_DEFAULT_USDC;
+            : GAS_DEFAULT_PHRS;
         modelData.sharePriceUsdc = Number(shareValue.toFixed(2));
         modelData.sharePrice = modelData.sharePriceUsdc;
-        modelData.pricingCurrency = 'USDC';
+        modelData.pricingCurrency = 'PHRS';
         modelData.tokenPrice = modelData.pricePerApiCallUsdc;
     });
     

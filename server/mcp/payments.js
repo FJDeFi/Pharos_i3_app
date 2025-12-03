@@ -1,6 +1,5 @@
 const { randomUUID } = require('crypto');
 const { MCP_CONFIG } = require('./config');
-const { verifySolanaUsdcTransfer } = require('./solana-verifier');
 const store = require('./store');
 
 function createInvoice({
@@ -45,10 +44,9 @@ function build402Body(entry, extras = {}, networkConfig = null) {
     request_id: entry.request_id,
     nonce: entry.nonce,
     amount_usdc: entry.amount_usdc,
-    currency: 'USDC',
+    currency: 'PHRS',
     recipient: paymentConfig.recipient || MCP_CONFIG.payments.recipient,
     network: paymentConfig.network || MCP_CONFIG.payments.network,
-    mint: paymentConfig.mint || MCP_CONFIG.payments.mint,
     expires_at: entry.expires_at,
     memo: entry.request_id,
     description: entry.meta?.description,
@@ -137,6 +135,5 @@ module.exports = {
   createInvoice,
   build402Body,
   parsePaymentHeader,
-  isExpired,
-  verifySolanaUsdcTransfer
+  isExpired
 };

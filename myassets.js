@@ -117,9 +117,9 @@ function calculateShareStats() {
 
 // ========== UPDATE DISPLAY FUNCTIONS ==========
 
-// 更新 USDC 余额显示（已移除卡片，保留函数以防其他地方调用）
+// 更新 PHRS 余额显示（已移除卡片，保留函数以防其他地方调用）
 function updateI3TokenBalance() {
-    // USDC Balance card has been removed from the UI
+    // PHRS Balance card has been removed from the UI
     return;
 }
 
@@ -133,7 +133,7 @@ function updateOverview() {
     const totalTokenValueK = tokenStats.totalUsdcSpent.toFixed(6);
     document.getElementById('totalTokenValue').innerHTML = `
         ${tokenStats.totalTokensK}K tokens
-        <small>Value: ${totalTokenValueK}K <img src="svg/usdc.svg" class="token-logo" alt="USDC" style="width: 16px; height: 16px; vertical-align: middle;"></small>
+        <small>Value: ${totalTokenValueK}K <img src="svg/chains/pharos.jpg" class="token-logo" alt="PHRS" style="width: 16px; height: 16px; vertical-align: middle;"></small>
     `;
     
     // Update Total Share Value card with detailed info
@@ -143,7 +143,7 @@ function updateOverview() {
     
     document.getElementById('totalShareValue').innerHTML = `
         ${shareStats.totalShares} shares
-        <small>Value: ${totalShareValueK}K <img src="svg/usdc.svg" class="token-logo" alt="USDC" style="width: 16px; height: 16px; vertical-align: middle;"></small>
+        <small>Value: ${totalShareValueK}K <img src="svg/chains/pharos.jpg" class="token-logo" alt="PHRS" style="width: 16px; height: 16px; vertical-align: middle;"></small>
     `;
     // Remove share change display
     document.getElementById('totalShareChange').style.display = 'none';
@@ -151,7 +151,7 @@ function updateOverview() {
     // Remove token change display (tokens don't fluctuate like shares)
     document.getElementById('totalTokenChange').style.display = 'none';
     
-    // Update USDC balance
+    // Update PHRS balance
     updateI3TokenBalance();
 }
 
@@ -201,7 +201,7 @@ function updateTokensDisplay() {
             </td>
             <td><span class="category">${token.category}</span></td>
             <td><strong class="api-calls-count">${apiCalls} API calls</strong></td>
-            <td><strong>${totalValueUsdc} <img src="svg/usdc.svg" class="token-logo" alt="USDC" style="width: 16px; height: 16px; vertical-align: middle;"></strong></td>
+            <td><strong>${totalValueUsdc} <img src="svg/chains/pharos.jpg" class="token-logo" alt="PHRS" style="width: 16px; height: 16px; vertical-align: middle;"></strong></td>
             <td>
                 <div class="action-buttons">
                     <button class="action-btn use-btn" onclick="useTokens('${token.modelName}')">Use</button>
@@ -249,10 +249,10 @@ function updateSharesDisplay() {
             </td>
             <td><span class="category">${share.category}</span></td>
             <td><strong>${share.quantity}</strong></td>
-            <td>${modelData.sharePrice.toFixed(2)}K <img src="svg/usdc.svg" class="token-logo" alt="USDC" style="width: 16px; height: 16px; vertical-align: middle;"></td>
+            <td>${modelData.sharePrice.toFixed(2)}K <img src="svg/chains/pharos.jpg" class="token-logo" alt="PHRS" style="width: 16px; height: 16px; vertical-align: middle;"></td>
             <td><span class="market-change ${changeClass}">${changeSymbol}${modelData.change.toFixed(2)}%</span></td>
             <td><span class="pool-ownership">${poolOwnership}%</span></td>
-            <td><strong>${totalValueK}K <img src="svg/usdc.svg" class="token-logo" alt="USDC" style="width: 16px; height: 16px; vertical-align: middle;"></strong></td>
+            <td><strong>${totalValueK}K <img src="svg/chains/pharos.jpg" class="token-logo" alt="PHRS" style="width: 16px; height: 16px; vertical-align: middle;"></strong></td>
             <td>
                 <div class="action-buttons">
                     <button class="action-btn use-btn" onclick="useShares('${share.modelName}')">Use</button>
@@ -442,11 +442,109 @@ function editWorkflow(workflowId) {
 }
 
 function runWorkflow(workflowId) {
+    console.log('🚀 [MyAssets] Running workflow:', workflowId);
+    
     const confirmed = confirm(`Are you sure you want to run this workflow?`);
-    if (confirmed) {
-        localStorage.setItem('runWorkflowId', workflowId);
-        window.location.href = 'index.html?workflow=' + encodeURIComponent(workflowId);
+    if (!confirmed) {
+        console.log('❌ [MyAssets] User cancelled');
+        return;
     }
+    
+    // 从localStorage加载workflow
+    let workflow = null;
+    try {
+        const myWorkflows = JSON.parse(localStorage.getItem('myWorkflows') || '[]');
+        workflow = myWorkflows.find(w => w.id === workflowId);
+        
+        if (!workflow) {
+            const canvasWorkflow = JSON.parse(localStorage.getItem('canvasWorkflow') || 'null');
+            if (canvasWorkflow && canvasWorkflow.id === workflowId) {
+                workflow = canvasWorkflow;
+            }
+        }
+        
+        console.log('📋 [MyAssets] Loaded workflow:', workflow);
+    } catch (e) {
+        console.error('❌ [MyAssets] Error loading workflow:', e);
+    }
+    
+    if (!workflow) {
+        alert('❌ Workflow not found');
+        return;
+    }
+    
+    // 关键：从workflow.nodes提取模型名称作为sequence
+    const sequence = workflow.models || (workflow.nodes || []).map(n => n.modelName);
+    
+    console.log('📊 [MyAssets] Extracted sequence:', sequence);
+    
+    if (!sequence || sequence.length === 0) {
+        alert('❌ Workflow has no models');
+        return;
+    }
+    
+    // 构建符合index.html要求的workflow格式
+    const workflowRecord = {
+        id: workflow.id,
+        name: workflow.name || 'Unnamed Workflow',
+        description: workflow.description || '',
+        status: 'running',
+        runId: `run-${Date.now()}`,
+        startedAt: new Date().toISOString(),
+        
+        // ===== 关键字段 =====
+        sequence: sequence,           // 必须有！这是模型名称数组
+        experts: sequence,            // 必须有！
+        // ====================
+        
+        // 节点详细信息
+        nodes: (workflow.nodes || []).map(node => ({
+            id: node.id,
+            name: node.modelName,
+            category: node.category || '',
+            quantity: Math.max(Number(node.quantity) || 1, 1),
+            x: Number(node.x) || 0,
+            y: Number(node.y) || 0
+        })),
+        
+        // Graph结构
+        graph: {
+            nodes: (workflow.nodes || []).map(n => ({
+                id: n.id,
+                name: n.modelName,
+                category: n.category,
+                x: n.x || 0,
+                y: n.y || 0
+            })),
+            edges: (workflow.connections || []).map(c => ({
+                from: c.from?.nodeId || c.from,
+                to: c.to?.nodeId || c.to
+            }))
+        },
+        
+        // 预付费字段（默认false，在chat界面逐节点支付）
+        prepaid: false,
+        workflowSessionId: null,
+        prepaidAmountUsdc: null,
+        prepaidModels: null,
+        lastPaymentTx: null,
+        lastPaymentExplorer: null,
+        prepaidAt: null,
+        lastPaymentAt: null,
+        lastPaymentMemo: null
+    };
+    
+    console.log('💾 [MyAssets] Prepared workflow record:', workflowRecord);
+    console.log('✅ [MyAssets] Sequence:', workflowRecord.sequence);
+    console.log('✅ [MyAssets] Experts:', workflowRecord.experts);
+    
+    // 保存到localStorage - 让index.html能读取
+    localStorage.setItem('currentWorkflow', JSON.stringify(workflowRecord));
+    localStorage.setItem('autoRouter', 'off');
+    localStorage.removeItem('forcedModel');
+    
+    console.log('🔀 [MyAssets] Redirecting to index.html');
+    window.location.href = 'index.html';
 }
 
 function deleteWorkflow(workflowId) {

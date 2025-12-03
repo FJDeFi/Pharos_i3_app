@@ -23,6 +23,593 @@ let selectionBox = null;
 let selectedNodes = new Set();
 let selectedConnections = new Set();
 
+// ==================== x402 Payment Support Functions ====================
+
+/**
+ * 获取已连接的钱包地址（Canvas 版）
+ * 直接复用 wallet-manager.js 在 localStorage 里存的地址：
+ *   localStorage.setItem('wallet_connected', this.walletAddress)
+ */
+async function getConnectedWallet() {
+    try {
+        // 和 wallet-manager.js 保持一致，用 'wallet_connected'
+        const savedWallet = localStorage.getItem('wallet_connected');
+        if (savedWallet && typeof savedWallet === 'string' && savedWallet.trim() !== '') {
+            return savedWallet;
+        }
+        console.warn('[Canvas] No connected wallet found in localStorage (wallet_connected)');
+        return null;
+    } catch (e) {
+        console.error('[Canvas] Failed to read wallet from localStorage:', e);
+        return null;
+    }
+}
+
+// ---- x402 / Pharos 支付辅助函数（Canvas 专用）----
+async function sendCanvasPharosPayment(recipient, amountUsdc, decimals) {
+    if (!window.ethereum || typeof ethers === 'undefined') {
+        throw new Error('Wallet provider (MetaMask / ethers) not available');
+    }
+    // 确保钱包已经连接
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const amountWei = ethers.utils.parseUnits(
+        amountUsdc.toString(),
+        decimals || 18
+    );
+    const tx = await signer.sendTransaction({
+        to: recipient,
+        value: amountWei
+    });
+    // 等待链上确认
+    await tx.wait();
+    return tx; // 保留 tx.hash 给后面 confirm 使用
+}
+
+// ---- Canvas 版 x402 Invoice 弹窗（对齐 workflow 的 UI + 付款逻辑）----
+function show402InvoiceModal(invoice, workflow) {
+    return new Promise((resolve) => {
+        const workflowInfo = invoice.workflow || {};
+        const workflowName =
+            (workflow && workflow.name) ||
+            workflowInfo.name ||
+            'My Canvas Workflow';
+        const network = invoice.network || 'pharos-testnet';
+        const nodeCount =
+            workflowInfo.node_count ??
+            workflowInfo.total_nodes ??
+            invoice.total_nodes ??
+            0;
+        const amount = Number(invoice.amount_usdc || 0);
+        const expiresAt = invoice.expires_at
+            ? new Date(invoice.expires_at)
+            : null;
+        const explorerBase =
+            invoice.explorer_base_url ||
+            'https://pharos-testnet.socialscan.io/tx';
+        const costBreakdown = invoice.cost_breakdown || [];
+        const breakdownRows =
+            costBreakdown.map((node) => `
+                <tr>
+                    <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;">
+                        ${node.name}
+                    </td>
+                    <td style="padding:8px 12px;text-align:center;border-bottom:1px solid #f3f4f6;">
+                        ${node.calls}
+                    </td>
+                    <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #f3f4f6;">
+                        ${Number(node.total_cost || 0).toFixed(6)} PHRS
+                    </td>
+                </tr>
+            `).join('') || `
+                <tr>
+                    <td colspan="3" style="padding:12px;text-align:center;color:#6b7280;border-bottom:1px solid #f3f4f6;">
+                        No detailed cost breakdown.
+                    </td>
+                </tr>
+            `;
+
+        const modal = document.createElement('div');
+        modal.className = 'modal show';
+        modal.style.cssText =
+            'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+        modal.innerHTML = `
+            <div style="background:white;border-radius:18px;padding:24px 24px 20px;
+                        box-shadow:0 20px 45px rgba(15,23,42,0.35);
+                        width:100%;max-width:640px;max-height:80vh;overflow-y:auto;
+                        font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">
+                <!-- Header -->
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                    <div style="width:32px;height:32px;border-radius:999px;
+                                background:linear-gradient(135deg,#6366f1,#3b82f6);
+                                display:flex;align-items:center;justify-content:center;
+                                color:white;font-size:18px;">
+                        ₓ
+                    </div>
+                    <div style="flex:1;">
+                        <h2 style="margin:0;font-size:18px;color:#111827;">x402 Payment Invoice</h2>
+                        <p style="margin:2px 0 0 0;font-size:12px;color:#6b7280;">
+                            Pay once, then execute this workflow from Canvas without additional transactions.
+                        </p>
+                    </div>
+                    <span style="font-size:11px;font-weight:600;padding:4px 8px;border-radius:999px;
+                                 background:#e0f2fe;color:#0369a1;">
+                        x402 PROTOCOL
+                    </span>
+                </div>
+                <!-- Summary -->
+                <div style="border-radius:12px;background:#f9fafb;padding:16px 14px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
+                        <span style="color:#6b7280;">Workflow</span>
+                        <span style="font-weight:600;color:#111827;">${workflowName}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
+                        <span style="color:#6b7280;">Total Nodes</span>
+                        <span style="font-weight:600;color:#111827;">${nodeCount}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
+                        <span style="color:#6b7280;">Network</span>
+                        <span style="font-weight:600;color:#111827;">${network}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:14px;">
+                        <span style="color:#6b7280;">Total Amount</span>
+                        <span style="font-weight:700;color:#16a34a;">${amount.toFixed(6)} PHRS</span>
+                    </div>
+                </div>
+                <!-- Cost breakdown -->
+                <details open style="margin-bottom:16px;border-radius:12px;border:1px solid #e5e7eb;background:#ffffff;">
+                    <summary style="list-style:none;padding:10px 14px;cursor:pointer;
+                                    display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:13px;color:#374151;">📊 Cost Breakdown (${nodeCount} nodes)</span>
+                        <span style="font-size:11px;color:#6b7280;">Toggle</span>
+                    </summary>
+                    <div style="border-top:1px solid #e5e7eb;">
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;padding:8px 12px;color:#6b7280;font-weight:500;border-bottom:1px solid #e5e7eb;">Model</th>
+                                    <th style="text-align:center;padding:8px 12px;color:#6b7280;font-weight:500;border-bottom:1px solid #e5e7eb;">Calls</th>
+                                    <th style="text-align:right;padding:8px 12px;color:#6b7280;font-weight:500;border-bottom:1px solid #e5e7eb;">Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${breakdownRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+                <!-- Pay once note -->
+                <div style="margin-bottom:14px;padding:10px 12px;border-radius:12px;
+                            border:1px solid #facc15;background:#fef9c3;font-size:12px;color:#854d0e;">
+                    <strong style="display:block;margin-bottom:4px;">⚡ Pay Once, Execute All!</strong>
+                    <span>After this single payment, you can execute all ${nodeCount || 'workflow'} nodes without any additional transactions.</span>
+                </div>
+                <!-- Recipient / Request / Explorer / Expiry -->
+                <div style="margin-bottom:18px;padding:12px 14px;border-radius:12px;
+                            border-left:4px solid #3b82f6;background:#eff6ff;font-size:12px;color:#1e3a8a;">
+                    <div style="margin-bottom:6px;">
+                        <strong>📍 Recipient:</strong><br>
+                        <code style="font-size:11px;background:white;border-radius:6px;padding:4px 6px;word-break:break-all;">
+                            ${invoice.recipient}
+                        </code>
+                    </div>
+                    <div style="margin-bottom:6px;">
+                        <strong>🆔 Request ID:</strong><br>
+                        <code style="font-size:11px;background:white;border-radius:6px;padding:4px 6px;word-break:break-all;">
+                            ${invoice.request_id}
+                        </code>
+                    </div>
+                    <div style="margin-bottom:6px;">
+                        <strong>🔗 Explorer:</strong><br>
+                        <span style="font-size:11px;">${explorerBase}/&lt;tx-hash-after-payment&gt;</span>
+                    </div>
+                    ${
+                        expiresAt
+                            ? `<div>
+                                   <strong>⏰ Expires:</strong><br>
+                                   <span style="font-size:11px;">${expiresAt.toLocaleString()}</span>
+                               </div>`
+                            : ''
+                    }
+                </div>
+                <!-- status + buttons -->
+                <div id="x402-payment-status"
+                     style="font-size:12px;color:#6b7280;margin-bottom:8px;min-height:16px;"></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+                    <button id="x402-cancel-btn"
+                            style="padding:9px 16px;font-size:13px;border-radius:999px;border:1px solid #e5e7eb;
+                                   background:white;color:#374151;cursor:pointer;">
+                        Cancel
+                    </button>
+                    <button id="x402-pay-btn"
+                            style="padding:9px 18px;font-size:13px;border-radius:999px;border:none;
+                                   background:linear-gradient(135deg,#4f46e5,#6366f1);
+                                   color:white;font-weight:600;cursor:pointer;">
+                        Pay ${amount.toFixed(6)} PHRS
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const cancelBtn = modal.querySelector('#x402-cancel-btn');
+        const payBtn = modal.querySelector('#x402-pay-btn');
+        const statusEl = modal.querySelector('#x402-payment-status');
+
+        // 取消：关闭弹窗，返回 null
+        cancelBtn.addEventListener('click', () => {
+            document.body.removeChild(modal);
+            resolve(null);
+        });
+
+        // 支付：调用 MetaMask / Pharos，一次性完成付款
+        payBtn.addEventListener('click', async () => {
+            try {
+                payBtn.disabled = true;
+                payBtn.textContent = 'Waiting for wallet...';
+                statusEl.textContent = 'Please confirm the transaction in your wallet.';
+
+                const tx = await sendCanvasPharosPayment(
+                    invoice.recipient,
+                    amount,
+                    invoice.decimals || 18
+                );
+
+                statusEl.textContent = 'Payment sent, waiting for confirmation...';
+
+                // 把 tx.hash 传回去，后面的 confirm + 保存逻辑沿用原有 purchaseAndPrepayCanvasWorkflow
+                document.body.removeChild(modal);
+                resolve({
+                    hash: tx.hash,
+                    amount,
+                    network,
+                    explorerUrl: explorerBase + '/' + tx.hash
+                });
+            } catch (err) {
+                console.error('x402 canvas payment error:', err);
+                statusEl.textContent =
+                    'Payment failed or was rejected: ' +
+                    (err && err.message ? err.message : err);
+                payBtn.disabled = false;
+                payBtn.textContent = `Pay ${amount.toFixed(6)} PHRS`;
+            }
+        });
+    });
+}
+
+/**
+ * 显示支付成功的toast通知
+ */
+function showWorkflowExplorerToast(signature, amount, explorerUrlOverride) {
+    try {
+        if (!signature) return;
+        const existing = document.getElementById('workflow-payment-toast');
+        if (existing) existing.remove();
+        
+        const toast = document.createElement('div');
+        toast.id = 'workflow-payment-toast';
+        toast.className = 'workflow-payment-toast';
+        const explorerUrl = explorerUrlOverride || `https://pharos-testnet.socialscan.io/tx/${encodeURIComponent(signature)}`;
+        
+        toast.innerHTML = `
+            <button class="workflow-payment-toast__close" aria-label="Dismiss">×</button>
+            <h4>✅ Workflow Payment Settled</h4>
+            <p>Amount: <strong>${Number(amount).toFixed(6)} PHRS</strong></p>
+            <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer">View on Explorer →</a>
+        `;
+        
+        const close = toast.querySelector('.workflow-payment-toast__close');
+        if (close) close.addEventListener('click', () => toast.remove());
+        
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            try { toast.remove(); } catch (_) {}
+        }, 12000);
+    } catch (err) {
+        console.warn('Failed to show explorer toast', err);
+    }
+}
+
+/**
+ * 预付费购买Canvas workflow
+ * 完整的x402支付流程:
+ * 1. 请求402发票
+ * 2. 显示发票并等待用户支付
+ * 3. 提交支付凭证验证
+ * 4. 保存prepaid信息
+ */
+async function purchaseAndPrepayCanvasWorkflow(options = {}) {
+    try {
+        const {
+            workflowId,
+            workflowName,
+            workflowDescription,
+            plan: incomingPlan
+        } = options;
+
+        const walletAddress = await getConnectedWallet();
+        if (!walletAddress) {
+            alert('Please connect your wallet first');
+            return;
+        }
+
+        // 如果外面已经算好 plan，就直接用；否则这里再算一次兜底
+        const plan = incomingPlan || computeExecutionPlan();
+        if (!plan || !plan.orderedNodes || !plan.orderedNodes.length) {
+            alert('⚠️ Please add at least one model to the Canvas first.');
+            return;
+        }
+
+        // 从 localStorage 兜底读取一次 currentWorkflow，避免字段缺失
+        let storedWorkflow = {};
+        try {
+            storedWorkflow = JSON.parse(localStorage.getItem('currentWorkflow') || '{}') || {};
+        } catch (_) {
+            storedWorkflow = {};
+        }
+
+        const finalWorkflowId = workflowId || storedWorkflow.id || `canvas-${Date.now()}`;
+        const finalWorkflowName = workflowName || storedWorkflow.name || 'Canvas Workflow';
+        const finalWorkflowDescription = 
+            typeof workflowDescription === 'string'
+                ? workflowDescription
+                : (storedWorkflow.description || '');
+
+        console.log('[Canvas][Prepay] Using workflow meta:', {
+            id: finalWorkflowId,
+            name: finalWorkflowName,
+            description: finalWorkflowDescription
+        });
+
+        const nodes = plan.orderedNodes;
+        const workflowNodeSummary = nodes.map((node, index) => ({
+            index: index + 1,
+            id: node.id,
+            name: node.modelName,
+            quantity: Math.max(Number(node.quantity) || 1, 1),
+            category: node.category || '',
+            position: { x: node.x, y: node.y }
+        }));
+
+        console.log('[Canvas][Prepay] Workflow nodes summary:', workflowNodeSummary);
+
+        // 组装 node payload：name + calls（对应 backend 的 node_count）
+        const nodePayload = nodes.map(node => ({
+            name: node.modelName,
+            calls: Math.max(Number(node.quantity) || 1, 1)
+        }));
+
+        const prepayRequestId = `canvas-prepay-${Date.now()}`;
+        console.log('[Canvas][Prepay] Sending /mcp/workflow.prepay payload:', {
+            workflow: { name: finalWorkflowName },
+            nodes: nodePayload,
+            requestId: prepayRequestId,
+            walletAddress
+        });
+
+        console.log('🔄 Requesting prepayment invoice for canvas workflow...');
+
+        // 1) 第一次请求：拿到 402 + invoice
+        const invoiceResponse = await fetch('/mcp/workflow.prepay', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Request-Id': prepayRequestId
+            },
+            body: JSON.stringify({
+                wallet_address: walletAddress,
+                workflow: { name: finalWorkflowName },
+                nodes: nodePayload
+            })
+        });
+
+        if (invoiceResponse.status !== 402) {
+            const text = await invoiceResponse.text();
+            console.error('[Canvas][Prepay] Expected 402 for invoice, got:', invoiceResponse.status, text);
+            alert(`Unexpected response (${invoiceResponse.status}). Please see console logs.`);
+            return;
+        }
+
+        const invoiceData = await invoiceResponse.json();
+        console.log('[Canvas][Prepay] Invoice received:', invoiceData);
+
+        // 打开发票 modal，让用户去链上支付，并让用户输入 tx hash
+        const paymentResult = await show402InvoiceModal(invoiceData, {
+            name: finalWorkflowName,
+            nodes: nodePayload
+        });
+
+        if (!paymentResult || !paymentResult.hash) {
+            alert('Payment was cancelled or no transaction hash was provided.');
+            return;
+        }
+
+        console.log('✅ Payment info collected:', paymentResult);
+
+        // ✅ 正确的 X-Payment 格式：必须以 x402 开头，nonce 用 invoiceData.nonce
+        const xPaymentHeader = `x402 ${invoiceData.network}; ` +
+            `tx=${paymentResult.hash}; ` +
+            `amount=${paymentResult.amount ?? invoiceData.amount_usdc}; ` +
+            `nonce=${invoiceData.nonce}`;
+
+        console.log('[Canvas][Prepay] X-Payment header:', xPaymentHeader);
+
+        // 2) 第二次请求：带上 X-Payment 确认预付费
+        const confirmResponse = await fetch('/mcp/workflow.prepay', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Request-Id': invoiceData.request_id,  // ✅ 使用 invoice 里的 request_id
+                'X-Payment': xPaymentHeader
+            },
+            body: JSON.stringify({
+                wallet_address: walletAddress,
+                workflow: { name: finalWorkflowName },
+                nodes: nodePayload
+            })
+        });
+
+        const confirmJson = await confirmResponse.json();
+        console.log('[Canvas][Prepay] Confirm response:', confirmResponse.status, confirmJson);
+
+        // ✅ 检查 HTTP 状态和响应中的 status 字段
+        if (!confirmResponse.ok || confirmJson.status !== 'ok') {
+            const errorMsg = confirmJson.message || confirmJson.error || 'Payment verification failed';
+            console.error('[Canvas][Prepay] Confirmation failed:', errorMsg, confirmJson);
+            alert(`❌ Prepay confirmation failed: ${errorMsg}`);
+            return;
+        }
+
+        // ====== 写 workflow + session 到 localStorage，供 index/chat 使用 ======
+        const workflowSession = {
+            workflow_session_id: confirmJson.workflow_session_id || confirmJson.workflowSessionId || null,
+            amount_paid: confirmJson.amount_usdc || invoiceData.amount_usdc,
+            total_nodes: confirmJson.total_nodes || (invoiceData.workflow && invoiceData.workflow.node_count) || nodePayload.reduce((s, n) => s + (n.calls || 0), 0),
+            wallet_address: walletAddress,
+            lastPaymentTx: paymentResult.hash || null,
+            lastPaymentExplorer: paymentResult.explorerUrl || null,
+            prepaidAt: new Date().toISOString()
+        };
+
+        try {
+            localStorage.setItem('canvasWorkflow', JSON.stringify({
+                id: finalWorkflowId,
+                name: finalWorkflowName,
+                description: finalWorkflowDescription,
+                prepaid: true,
+                prepaidAt: workflowSession.prepaidAt,
+                prepaidAmountUsdc: workflowSession.amount_paid,
+                prepaidModels: nodePayload,
+                lastPaymentTx: workflowSession.lastPaymentTx,
+                lastPaymentExplorer: workflowSession.lastPaymentExplorer,
+                lastPaymentAt: workflowSession.prepaidAt,
+                lastPaymentMemo: `Workflow prepay via Canvas`,
+                workflowSessionId: workflowSession.workflow_session_id
+            }));
+        } catch (e) {
+            console.warn('[Canvas][Prepay] Failed to persist canvasWorkflow:', e);
+        }
+
+        // 同时更新 currentWorkflow，保持 index.html 兼容（写成"正在运行"的完整工作流）
+        let currentWorkflow = {};
+        try {
+            currentWorkflow = JSON.parse(localStorage.getItem('currentWorkflow') || '{}') || {};
+        } catch (_) {
+            currentWorkflow = {};
+        }
+
+        // 从 plan 里抽取执行顺序（nodes 已在前面定义）
+        const sequenceNames = Array.isArray(plan?.sequenceNames) && plan.sequenceNames.length
+            ? plan.sequenceNames
+            : nodes.map(n => n.modelName);
+        const runId = `run-${Date.now()}`;
+
+        // 丰富每个节点的信息（和 executeCanvasWorkflow 保持一致）
+        const enrichedNodes = nodes.map(node => {
+            const md = (typeof getModelData === 'function') ? getModelData(node.modelName) : null;
+            return {
+                id: node.id,
+                name: node.modelName,
+                category: node.category || '',
+                quantity: Math.max(Number(node.quantity) || 1, 1),
+                x: Number(node.x) || 0,
+                y: Number(node.y) || 0,
+                purpose: md?.purpose || '',
+                useCase: md?.useCase || '',
+                industry: md?.industry || ''
+            };
+        });
+
+        const expertDetails = enrichedNodes.map(n => ({
+            name: n.name,
+            purpose: n.purpose,
+            useCase: n.useCase,
+            industry: n.industry
+        }));
+
+        const updatedCurrentWorkflow = {
+            ...currentWorkflow,
+            // 基本信息
+            id: finalWorkflowId,
+            name: finalWorkflowName,
+            description: finalWorkflowDescription,
+            // 🔴 关键：对 index.html 来说，这是"正在运行的 workflow"
+            status: 'running',
+            runId,
+            startedAt: new Date().toISOString(),
+            // 🔴 chat UI 和执行逻辑会用到的字段
+            sequence: sequenceNames,
+            experts: sequenceNames.slice(),
+            expertDetails,
+            graph: {
+                nodes: enrichedNodes.map(n => ({
+                    id: n.id,
+                    name: n.name,
+                    category: n.category,
+                    x: n.x,
+                    y: n.y
+                })),
+                edges: Array.isArray(plan?.edges)
+                    ? plan.edges.map(edge => ({
+                        from: edge.from,
+                        to: edge.to
+                    }))
+                    : []
+            },
+            nodes: enrichedNodes,
+            // 预付费相关字段
+            prepaid: true,
+            prepaidAt: workflowSession.prepaidAt,
+            prepaidAmountUsdc: workflowSession.amount_paid,
+            prepaidModels: nodePayload,
+            lastPaymentTx: workflowSession.lastPaymentTx,
+            lastPaymentExplorer: workflowSession.lastPaymentExplorer,
+            lastPaymentAt: workflowSession.prepaidAt,
+            lastPaymentMemo: `Workflow prepay via Canvas`,
+            workflowSessionId: workflowSession.workflow_session_id
+        };
+
+        // 清理 forcedModel，确保 chat 用 workflow 模式
+        try { localStorage.removeItem('forcedModel'); } catch (_) {}
+        try {
+            localStorage.setItem('currentWorkflow', JSON.stringify(updatedCurrentWorkflow));
+        } catch (e) {
+            console.warn('[Canvas][Prepay] Failed to persist currentWorkflow:', e);
+        }
+
+        try { localStorage.setItem('autoRouter', 'off'); } catch (_) {}
+
+        console.log('[Canvas][Prepay] Workflow prepaid successfully:', updatedCurrentWorkflow);
+
+        // ✅ 显示支付成功的 toast 通知
+        showWorkflowExplorerToast(
+            paymentResult.hash,
+            workflowSession.amount_paid,
+            paymentResult.explorerUrl
+        );
+
+        alert(`✅ Workflow "${finalWorkflowName}" prepaid successfully! Redirecting to chat...`);
+
+        // ✅ 清除旧的初始化标记，确保 index.html 会重新显示预付费提示
+        try {
+            const oldKey1 = `wfInit:${runId}`;
+            const oldKey2 = `wfInit:${finalWorkflowName}`;
+            localStorage.removeItem(oldKey1);
+            localStorage.removeItem(oldKey2);
+        } catch (_) {}
+
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 600);
+    } catch (error) {
+        console.error('❌ Canvas prepayment failed:', error);
+        alert(`Payment failed: ${error.message}`);
+    }
+}
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('初始化Canvas工作流...');
@@ -1405,70 +1992,38 @@ function saveWorkflow() {
     console.log('💾 Workflow saved:', workflow);
 }
 
+/**
+ * Run workflow - 支持两种支付模式
+ */
 function runWorkflow() {
-    if (workflowNodes.length === 0) {
-        alert('⚠️ Please add some models to create a workflow first.');
+    if (!workflowNodes || workflowNodes.length === 0) {
+        alert('⚠️ Please add at least one model to the Canvas first.');
         return;
     }
 
-    // Build a sequential topological order (no parallel). Tie-break by x, then name.
-    const nodes = workflowNodes.map(n => ({ id: n.id, name: n.modelName, category: n.category, x: n.x || 0 }));
-    const nodeIds = new Set(nodes.map(n => n.id));
-    const byId = new Map(nodes.map(n => [n.id, n]));
-    const posX = new Map(nodes.map(n => [n.id, n.x]));
+    // 显示支付方式选择对话框
+    const choice = confirm(
+        `Choose payment method for your canvas workflow:\n\n` +
+        `OK = Prepay once (single transaction for all nodes)\n` +
+        `Cancel = Pay per node (separate transaction for each node)`
+    );
 
-    const edges = connections
-        .filter(c => nodeIds.has(c.from.nodeId) && nodeIds.has(c.to.nodeId) && c.from.nodeId !== c.to.nodeId)
-        .map(c => ({ from: c.from.nodeId, to: c.to.nodeId }));
-
-    const inDeg = new Map();
-    nodes.forEach(n => inDeg.set(n.id, 0));
-    edges.forEach(e => inDeg.set(e.to, (inDeg.get(e.to) || 0) + 1));
-
-    const adj = new Map();
-    nodes.forEach(n => adj.set(n.id, []));
-    edges.forEach(e => adj.get(e.from).push(e.to));
-
-    const ready = [];
-    inDeg.forEach((deg, id) => { if (deg === 0) ready.push(id); });
-    ready.sort((a, b) => (posX.get(a) - posX.get(b)) || (byId.get(a).name.localeCompare(byId.get(b).name)));
-
-    const seq = [];
-    let processed = 0;
-    while (ready.length) {
-        const u = ready.shift();
-        seq.push(u);
-        processed++;
-        for (const v of adj.get(u)) {
-            inDeg.set(v, inDeg.get(v) - 1);
-            if (inDeg.get(v) === 0) {
-                ready.push(v);
-                ready.sort((a, b) => (posX.get(a) - posX.get(b)) || (byId.get(a).name.localeCompare(byId.get(b).name)));
-            }
-        }
-    }
-
-    let orderedNodes;
-    let orderNote;
-    if (processed !== nodes.length) {
-        // Cycle fallback: left → right
-        orderedNodes = [...workflowNodes].sort((a, b) => a.x - b.x);
-        orderNote = 'Left to Right (cycle fallback)';
-        console.warn('⚠️ Cycle detected in canvas workflow. Using left→right order.');
+    if (choice) {
+        // 预付费模式 - 新增功能
+        purchaseAndPrepayCanvasWorkflow();
     } else {
-        orderedNodes = seq.map(id => byId.get(id)).filter(Boolean);
-        orderNote = 'Topological order (no parallel)';
+        // 按节点付费模式 - 保留原有逻辑
+        const workflowName = prompt('Enter workflow name:', 'Canvas Workflow');
+        if (!workflowName) return;
+        
+        const workflowDescription = prompt('Enter workflow description (optional):', '');
+        
+        executeCanvasWorkflow({
+            workflowName,
+            workflowDescription,
+            prepay: false  // 明确标记不是预付费
+        });
     }
-
-    let description = `🚀 Running workflow with ${workflowNodes.length} nodes:\n\n`;
-    orderedNodes.forEach((node, index) => {
-        description += `${index + 1}. ${node.name || node.modelName} (${node.category})\n`;
-    });
-    description += `\n📊 Execution order: ${orderNote}\n`;
-    description += `✨ Workflow execution simulated successfully!`;
-
-    alert(description);
-    console.log('🚀 Workflow executed:', orderedNodes.map(n => (n.name || n.modelName)));
 }
 
 function configureNode(nodeId) {
@@ -1530,40 +2085,55 @@ function showSaveRunModal() {
 
 function hideSaveRunModal() {
     const modal = document.getElementById('saveRunModal');
-    modal.classList.remove('show');
+    if (modal) modal.classList.remove('show');
     
     // Clear form
-    document.getElementById('workflowName').value = '';
-    document.getElementById('workflowDescription').value = '';
-    document.getElementById('visibilityPublic').checked = true;
+    const nameInput = document.getElementById('workflowName');
+    if (nameInput) nameInput.value = '';
+    
+    const descInput = document.getElementById('workflowDescription');
+    if (descInput) descInput.value = '';
+    
+    // 这行是给 MyAssets 那边复用的代码，Canvas 里没这个元素就直接忽略
+    const visibilityPublic = document.getElementById('visibilityPublic');
+    if (visibilityPublic) {
+        visibilityPublic.checked = true;
+    }
 }
 
 function saveAndRunWorkflow() {
+    console.log('💾 [Canvas] Save and Run workflow');
+    
     const workflowName = document.getElementById('workflowName').value.trim();
     const workflowDescription = document.getElementById('workflowDescription').value.trim();
-    const visibility = 'private';
     
     if (!workflowName) {
-        alert('请输入工作流名称。');
+        alert('Please enter a workflow name.');
+        return;
+    }
+    
+    if (!workflowNodes || workflowNodes.length === 0) {
+        alert('⚠️ Please add at least one model to the Canvas first.');
         return;
     }
 
-    // 收集模型列表 - 在这里添加
+    console.log(`📝 [Canvas] Saving workflow: ${workflowName}`);
+    
+    // 1. 收集模型列表
     const modelsList = workflowNodes.map(node => node.modelName);
     const modelsUsed = modelsList.length > 0 ? `${modelsList.join(', ')} (${modelsList.length} models)` : 'None';
     
+    const workflowId = 'workflow_' + Date.now();
     
-    // 保存完整的工作流数据
+    // 2. 保存完整的工作流数据到 myWorkflows (显示在MyAssets页面)
     const completeWorkflowData = {
-        id: 'workflow_' + Date.now(),
+        id: workflowId,
         name: workflowName,
         description: workflowDescription,
-        visibility: visibility,
-        // 添加这些字段用于 My Workflows 显示
+        visibility: 'private',
         models: modelsList,
         modelsUsed: modelsUsed,
         modelCount: modelsList.length,
-        // 保存节点的完整信息
         nodes: workflowNodes.map(node => ({
             id: node.id,
             modelName: node.modelName,
@@ -1573,41 +2143,31 @@ function saveAndRunWorkflow() {
             x: node.x,
             y: node.y
         })),
-        // 保存连接的完整信息
         connections: connections.map(conn => ({
             id: conn.id,
-            from: {
-                nodeId: conn.from.nodeId,
-                type: conn.from.type
-            },
-            to: {
-                nodeId: conn.to.nodeId,
-                type: conn.to.type
-            }
+            from: { nodeId: conn.from.nodeId, type: conn.from.type },
+            to: { nodeId: conn.to.nodeId, type: conn.to.type }
         })),
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),
-        status: 'running'
+        status: 'RUNNING'
     };
     
-    // 保存到 currentWorkflow（用于index.html显示状态）
-    localStorage.setItem('currentWorkflow', JSON.stringify(completeWorkflowData));
-    
-    // 保存到 canvasWorkflow（用于Canvas恢复）
-    localStorage.setItem('canvasWorkflow', JSON.stringify(completeWorkflowData));
-    
-    
-    // 无论公有还是私有，都保存到 myWorkflows（用户点击Run就自动保存）
+    // 3. 保存到 myWorkflows
     let myWorkflows = JSON.parse(localStorage.getItem('myWorkflows') || '[]');
     myWorkflows.push(completeWorkflowData);
     localStorage.setItem('myWorkflows', JSON.stringify(myWorkflows));
+    console.log('✅ [Canvas] Saved to myWorkflows');
     
+    // 4. 关闭弹窗
     hideSaveRunModal();
     
+    // 5. 执行workflow：走预付费分支，触发 X402 支付
     executeCanvasWorkflow({
-        workflowId: completeWorkflowData.id,
-        workflowName,
-        workflowDescription
+        workflowId: workflowId,
+        workflowName: workflowName,
+        workflowDescription: workflowDescription,
+        prepay: true
     });
 }
 
@@ -1665,12 +2225,22 @@ function loadWorkflowToCanvas(workflow) {
     document.getElementById('saveRunBtn').style.display = 'none';
     document.getElementById('runBtn').style.display = 'flex';
     
-    // Store workflow data
+    // Store workflow data - preserve prepaid fields from input workflow
     localStorage.setItem('currentWorkflow', JSON.stringify({
         id: workflow.id,
         name: workflow.name,
         description: workflow.description,
-        status: 'ready'
+        status: 'running',
+        // ✅ 关键修复：保留预付费相关字段
+        prepaid: !!workflow.prepaid,
+        prepaidAt: workflow.prepaidAt || null,
+        prepaidAmountUsdc: workflow.prepaidAmountUsdc || null,
+        prepaidModels: workflow.prepaidModels || null,
+        lastPaymentTx: workflow.lastPaymentTx || null,
+        lastPaymentExplorer: workflow.lastPaymentExplorer || null,
+        lastPaymentAt: workflow.lastPaymentAt || null,
+        lastPaymentMemo: workflow.lastPaymentMemo || null,
+        workflowSessionId: workflow.workflowSessionId || null
     }));
     
     console.log('✅ Workflow loaded successfully');
@@ -1816,16 +2386,29 @@ function computeExecutionPlan() {
     };
 }
 
-function executeCanvasWorkflow({ workflowId, workflowName, workflowDescription } = {}) {
+function executeCanvasWorkflow({ workflowId, workflowName, workflowDescription, prepay } = {}) {
     const plan = computeExecutionPlan();
     if (!plan.orderedNodes.length) {
-        alert('⚠️ 请先在Canvas上添加至少一个模型。');
+        alert('⚠️ Please add at least one model to the Canvas first.');
         return;
     }
 
+    // 先统一算一份安全的 meta，后面普通运行和预付费共用
     const workflowNameSafe = workflowName || 'Canvas Workflow';
     const workflowIdSafe = workflowId || `canvas-${Date.now()}`;
     const descriptionSafe = workflowDescription || '';
+
+    // === 如果选择预付费, 走预付费流程 ===
+    if (prepay) {
+        purchaseAndPrepayCanvasWorkflow({
+            workflowId: workflowIdSafe,
+            workflowName: workflowNameSafe,
+            workflowDescription: descriptionSafe,
+            plan              // 把刚算好的执行顺序也一起传进去，避免重复计算
+        });
+        return;
+    }
+    // =========================================
     const runId = `run-${Date.now()}`;
     let existingWorkflowMeta = {};
     try {
@@ -1919,16 +2502,20 @@ function executeCanvasWorkflow({ workflowId, workflowName, workflowDescription }
 
     try { localStorage.setItem('autoRouter', 'off'); } catch (_) {}
 
-    alert(`🚀 工作流 "${workflowNameSafe}" 已准备好，正在跳转到聊天界面执行。`);
+    // 添加这段代码 - 确保跳转
+    console.log('🎉 [Canvas] Workflow ready, redirecting to chat');
+    alert(`🚀 Workflow "${workflowNameSafe}" is ready, redirecting to chat interface.`);
+    
     setTimeout(() => {
+        console.log('🔀 [Canvas] Redirecting to index.html');
         window.location.href = 'index.html';
-    }, 300);
+    }, 500);
 }
 
 // Run selected workflow
 function runSelectedWorkflow() {
     if (!workflowNodes.length) {
-        alert('⚠️ 请先在Canvas上加载一个工作流。');
+        alert('⚠️ Please load a workflow on the Canvas first.');
         return;
     }
 
@@ -2010,6 +2597,10 @@ window.showSaveRunModal = showSaveRunModal;
 window.hideSaveRunModal = hideSaveRunModal;
 window.saveAndRunWorkflow = saveAndRunWorkflow;
 window.runSelectedWorkflow = runSelectedWorkflow;
+// === 新增导出 ===
+window.purchaseAndPrepayCanvasWorkflow = purchaseAndPrepayCanvasWorkflow;
+window.getConnectedWallet = getConnectedWallet;
+// ================
 function getCurrentCanvasModels() {
     return workflowNodes.map(node => node.modelName);
 }

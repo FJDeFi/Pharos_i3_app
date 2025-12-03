@@ -21,6 +21,76 @@
     <link rel="stylesheet" href="canvas.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <style>
+        /* Workflow Payment Toast Styles */
+        .workflow-payment-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            max-width: 400px;
+            z-index: 10000;
+            animation: slideInUp 0.3s ease-out;
+        }
+
+        .workflow-payment-toast__close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: transparent;
+            border: none;
+            font-size: 24px;
+            color: #999;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+        }
+
+        .workflow-payment-toast__close:hover {
+            color: #333;
+        }
+
+        .workflow-payment-toast h4 {
+            margin: 0 0 12px;
+            color: #1a1a1a;
+            font-size: 16px;
+            padding-right: 32px;
+        }
+
+        .workflow-payment-toast p {
+            margin: 0 0 12px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .workflow-payment-toast a {
+            display: inline-block;
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .workflow-payment-toast a:hover {
+            text-decoration: underline;
+        }
+
+        @keyframes slideInUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+    </style>
 <!-- Base Account SDK -->
     <script src="https://unpkg.com/@base-org/account/dist/base-account.min.js"></script>
     
@@ -926,7 +996,7 @@
                 return false;
             }
             
-            console.log('✅ Firebase 配置验证通过');
+            console.log('✅ Firebase configuration validated');
             return true;
         }
 
@@ -944,7 +1014,7 @@
                     throw new Error('Firebase 配置验证失败，请检查配置信息');
                 }
                 
-                console.log('🚀 开始初始化 Firebase...');
+                console.log('🚀 Starting Firebase initialization...');
                 
                 // 动态加载 Firebase SDK
                 const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
@@ -978,12 +1048,12 @@
                 // Notify listeners that Firebase is ready
                 try { window.dispatchEvent(new Event('firebaseReady')); } catch (_) {}
                 
-                console.log('✅ Firebase 初始化成功');
+                console.log('✅ Firebase initialized successfully');
                 
                 // 设置认证状态监听器
                 onAuthStateChanged(firebaseAuth, async (user) => {
                     if (user) {
-                        console.log('用户已登录:', user.email);
+                        console.log('User logged in:', user.email);
                         currentUser = user;
                         // 🔑 让其他逻辑识别已登录
                         window.currentUser = user;
@@ -1012,7 +1082,7 @@
                         updateUIForSignedInUser(user);
                         loadUserData(user.uid);
                     } else {
-                        console.log('用户已退出');
+                        console.log('User logged out');
                         currentUser = null;
                         window.currentUser = null; // 可选
                         updateUIForSignedOutUser();
@@ -1034,14 +1104,14 @@
                         googleSignInBtn.disabled = false;
                         googleSignInBtn.style.opacity = '1';
                         googleSignInBtn.style.cursor = 'pointer';
-                        console.log('✅ Google 登录按钮已启用');
+                        console.log('✅ Google sign-in button enabled');
                     }
                 })();
                 
             } catch (error) {
                 console.error('❌ Firebase 初始化失败:', error);
                 const el = document.getElementById('googleSignInStatus');
-                if (el) el.textContent = 'Firebase 加载失败，请刷新页面重试';
+                if (el) el.textContent = 'Firebase load failed, please refresh the page';
             }
         }
 
@@ -1051,7 +1121,7 @@
                 // 双重检查：确保 Firebase 已初始化
                 if (!firebaseAuth || !firebaseApp) {
                     console.error('❌ Firebase 未初始化');
-                    alert('Firebase 还未加载完成，请稍后再试');
+                    alert('Firebase is still loading, please try again later');
                     return;
                 }
                 
@@ -1071,7 +1141,7 @@
                 if (mode === 'auto') {
                     try {
                         const result = await signInWithPopup(firebaseAuth, provider);
-                        console.log('✅ 登录成功:', result.user.email);
+                        console.log('✅ Login successful:', result.user.email);
                         (function(){
                             const el = document.getElementById('googleSignInStatus');
                             if (el) el.textContent = 'Log in successful！';
@@ -1088,7 +1158,7 @@
                     }
                 } else {
                     const result = await signInWithPopup(firebaseAuth, provider);
-                    console.log('✅ 登录成功:', result.user.email);
+                    console.log('✅ Login successful:', result.user.email);
                     (function(){
                         const el = document.getElementById('googleSignInStatus');
                         if (el) el.textContent = 'Log in successful！';
@@ -1099,7 +1169,7 @@
                 console.error('❌ Log in failed:', error);
                 if (error.code === 'auth/unauthorized-domain') {
                     const el = document.getElementById('googleSignInStatus');
-                    if (el) el.textContent = '域名未授权，请在 Firebase 控制台添加当前域名';
+                    if (el) el.textContent = 'Domain not authorized, please add current domain in Firebase console';
                 } else {
                     const el = document.getElementById('googleSignInStatus');
                     if (el) el.textContent = 'Log in failed: ' + error.message;
@@ -1123,7 +1193,7 @@
                 // 绑定新的事件监听器
                 newBtn.addEventListener('click', handleGoogleSignIn);
                 
-                console.log('✅ Google 登录按钮事件绑定成功');
+                console.log('✅ Google sign-in button event bound successfully');
             }
         }
 
@@ -1155,7 +1225,7 @@
                 logoutBtn.style.display = 'block';
             }
             
-            console.log('✅ 用户已登录，钱包功能保持可见，logout 按钮已激活');
+            console.log('✅ User logged in, wallet feature remains visible, logout button activated');
         }
 
         // 更新未登录用户的 UI
@@ -1185,7 +1255,7 @@
                 logoutBtn.style.display = 'none';
             }
             
-            console.log('❌ 用户已退出，钱包功能保持可见，logout 按钮已隐藏');
+            console.log('❌ User logged out, wallet feature remains visible, logout button hidden');
         }
 
         // 加载用户数据
@@ -1198,7 +1268,7 @@
                 const userDoc = await getDoc(userRef);
                 
                 if (userDoc.exists()) {
-                    console.log('用户数据已存在');
+                    console.log('User data already exists');
                 } else {
                     // 创建新用户文档
                     const userData = {
@@ -1212,7 +1282,7 @@
                     };
                     
                     await setDoc(userRef, userData);
-                    console.log('✅ 新用户文档已创建');
+                    console.log('✅ New user document created');
                 }
             } catch (error) {
                 console.error('❌ 加载用户数据失败:', error);
@@ -1298,7 +1368,7 @@
                         // 执行本地签到
                         const result = window.walletManager.dailyCheckin();
                         if (!result || !result.success) {
-                            alert(result?.error || '签到失败，请稍后重试');
+                            alert(result?.error || 'Check-in failed, please try again later');
                             return;
                         }
 
@@ -1366,7 +1436,7 @@
                 
             } catch (error) {
                 console.error('签到失败:', error);
-                alert('签到失败: ' + error.message);
+                alert('Check-in failed: ' + error.message);
             }
         };
 
@@ -1404,7 +1474,7 @@
         window.handleGoogleLogout = async function() {
             try {
                 if (!firebaseAuth) {
-                    alert('Firebase 未初始化');
+                    alert('Firebase not initialized');
                     return;
                 }
                 
@@ -1412,7 +1482,7 @@
                 const { signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
                 await signOut(firebaseAuth);
                 
-                console.log('✅ Google 登出成功');
+                console.log('✅ Google logout successful');
                 
                 // 更新 UI 状态
                 updateUIForSignedOutUser();
@@ -1425,7 +1495,7 @@
                 
             } catch (error) {
                 console.error('❌ 登出失败:', error);
-                alert('登出失败: ' + error.message);
+                alert('Logout failed: ' + error.message);
             }
         };
 
@@ -1468,7 +1538,7 @@
         // 检查 Firebase 状态并显示钱包模态框
         window.checkFirebaseAndShowWalletModal = function(event) {
             if (!window.firebaseDb) {
-                alert('Firebase 加载中，请稍后再试...');
+                alert('Firebase is loading, please try again later...');
                 return;
             }
             showWalletSelectionModal(event);
@@ -1484,12 +1554,12 @@
                     // 显示 Google 登录，隐藏钱包
                     googleSignInBtn.style.display = 'flex';
                     walletSection.style.display = 'none';
-                    console.log('✅ 显示 Google 登录，隐藏钱包功能');
+                    console.log('✅ Show Google sign-in, hide wallet feature');
                 } else {
                     // 隐藏 Google 登录，显示钱包
                     googleSignInBtn.style.display = 'none';
                     walletSection.style.display = 'block';
-                    console.log('✅ 隐藏 Google 登录，显示钱包功能');
+                    console.log('✅ Hide Google sign-in, show wallet feature');
                 }
             }
         };
@@ -1534,7 +1604,7 @@
         function initializeFirebaseAndUI() {
             // Guard to avoid double init
             try { window._firebaseInitStarted = true; } catch (_) {}
-            console.log('🚀 开始初始化 Firebase 和 UI...');
+            console.log('🚀 Starting Firebase and UI initialization...');
             
             // 确保所有元素都存在
             const googleSignInBtn = document.getElementById('googleSignInBtn');
@@ -1542,7 +1612,7 @@
             const googleSignInStatus = document.getElementById('googleSignInStatus');
             
             if (googleSignInBtn && walletSection && googleSignInStatus) {
-                console.log('✅ 所有 UI 元素已找到');
+                console.log('✅ All UI elements found');
                 
                 // 初始化时显示 Google 登录和钱包功能
                 googleSignInBtn.style.display = 'flex';
@@ -1559,7 +1629,7 @@
                     logoutBtn.style.display = 'none';
                 }
                 
-                console.log('✅ UI 初始化完成，等待 Firebase 加载...');
+                console.log('✅ UI initialization complete, waiting for Firebase...');
             } else {
                 console.error('❌ 某些 UI 元素未找到');
             }
@@ -1713,12 +1783,12 @@
                 // Log client-side connection time
                 console.log('🕒 Wallet connected at (client):', new Date().toISOString());
 
-                console.log('✅ 钱包信息已写入 Firestore', { address, chainId, networkName });
+                console.log('✅ Wallet info written to Firestore', { address, chainId, networkName });
                 // 标记钱包已连接
                 localStorage.setItem('walletConnected', 'true');
             } catch (err) {
                 console.error('❌ 写入钱包信息到 Firestore 失败:', err);
-                alert('保存钱包信息失败：' + err.message);
+                alert('Failed to save wallet info: ' + err.message);
             }
         };
 
@@ -1739,13 +1809,13 @@
             console.log('🔎 Inline Firebase script loaded, readyState:', document.readyState);
             if (document.readyState === 'interactive' || document.readyState === 'complete') {
                 try {
-                    console.log('⏩ DOM 已就绪，立即调用 initializeFirebaseAndUI()');
+                    console.log('⏩ DOM ready, calling initializeFirebaseAndUI() immediately');
                     if (!window._firebaseInitStarted) initializeFirebaseAndUI();
                 } catch (err) {
                     console.error('❌ 兜底初始化失败:', err);
                 }
             } else {
-                console.log('⌛ 等待 DOMContentLoaded');
+                console.log('⌛ Waiting for DOMContentLoaded');
             }
         })();
 
@@ -1785,17 +1855,17 @@
             
             <div class="wallet-modal-header">
                 <h2 class="wallet-modal-title">Log in or sign up</h2>
-                <p class="wallet-modal-subtitle">Log in and connect wallet to earn USDC credits</p>
+                <p class="wallet-modal-subtitle">Log in and connect wallet to earn PHRS credits</p>
             </div>
 
             <div class="wallet-options">
-                <div class="wallet-option available" onclick="connectSolanaPhantom()">
+                <div class="wallet-option available" onclick="connectMetaMaskWallet()">
                     <span class="wallet-icon-wrap">
-                        <img src="svg/phantom.svg" alt="Phantom">
+                        <img src="svg/metamask.svg" alt="MetaMask">
                     </span>
                     <div class="wallet-info">
-                        <div class="wallet-name">Phantom (Solana Devnet)</div>
-                        <div class="wallet-desc">Pay and check in with USDC on Solana Devnet</div>
+                        <div class="wallet-name">MetaMask (Pharos Testnet)</div>
+                        <div class="wallet-desc">Pay with PHRS on Pharos Testnet</div>
                     </div>
                 </div>
 
@@ -1814,7 +1884,7 @@
             
             <div class="wallet-modal-header">
                 <h2 class="wallet-modal-title">✅ Check-In on Chain</h2>
-                <p class="wallet-modal-subtitle">Complete your daily on-chain check-in to earn USDC credits</p>
+                <p class="wallet-modal-subtitle">Complete your daily on-chain check-in to earn PHRS credits</p>
             </div>
 
             <div id="userStatusSection" style="margin: 20px 0; padding: 16px; background: #f0fdf4; border-radius: 12px;">
@@ -1837,12 +1907,12 @@
             <div style="margin: 20px 0;">
                 <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">Network</label>
                 <select id="chainSelector" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;" disabled>
-                    <option value="SOLANA">Solana (Devnet)</option>
+                    <option value="PHAROS_TESTNET">Pharos Testnet</option>
                 </select>
             </div>
 
             <div style="margin: 20px 0; padding: 12px; background: #fef3c7; border-radius: 8px; border: 1px solid #fcd34d;">
-                <p style="font-size: 13px; color: #92400e; margin: 0;">⛽ Gas fee: ≈0.00025 USDC per call</p>
+                <p style="font-size: 13px; color: #92400e; margin: 0;">⛽ Gas fee: ≈0.00025 PHRS per call</p>
             </div>
 
             <button id="executeCheckInBtn" onclick="executeOnChainCheckIn()" 

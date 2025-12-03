@@ -439,7 +439,7 @@
         <div class="modelverse-container">
             <section class="modelverse-header">
                 <h1 class="modelverse-title">Modelverse</h1>
-                <p class="modelverse-subtitle">Browse curated AI models with transparent USDC pricing.</p>
+                <p class="modelverse-subtitle">Browse curated AI models with transparent PHRS pricing.</p>
             </section>
 
             <section class="search-section">
@@ -469,8 +469,8 @@
                                 <th>MODEL</th>
                                 <th>CATEGORY</th>
                                 <th>INDUSTRY</th>
-                                <th>PRICE / API CALL (USDC)</th>
-                                <th>SHARE PRICE (USDC)</th>
+                                <th>PRICE / API CALL (PHRS)</th>
+                                <th>SHARE PRICE (PHRS)</th>
                                 <th>MARKET CHANGE</th>
                                 <th>USAGE</th>
                                 <th>COMPATIBILITY</th>
@@ -609,24 +609,22 @@
             
             <div class="wallet-modal-header">
                 <h2 class="wallet-modal-title">Log in or sign up</h2>
-                <p class="wallet-modal-subtitle">Log in and connect wallet to earn USDC credits</p>
+                <p class="wallet-modal-subtitle">Log in and connect wallet to earn PHRS credits</p>
             </div>
 
             <div class="wallet-options">
-                <div class="wallet-option available" onclick="connectSolanaPhantom()">
+                <div class="wallet-option available" onclick="connectMetaMaskWallet()">
                     <span class="wallet-icon-wrap">
-                        <img src="svg/phantom.svg" alt="Phantom">
+                        <img src="svg/metamask.svg" alt="MetaMask">
                     </span>
                     <div class="wallet-info">
-                        <div class="wallet-name">Phantom (Solana Devnet)</div>
-                        <div class="wallet-desc">Pay and check in with USDC on Solana Devnet</div>
+                        <div class="wallet-name">MetaMask (Pharos Testnet)</div>
+                        <div class="wallet-desc">Pay with PHRS on Pharos Testnet</div>
                     </div>
                 </div>
-
                 <div class="wallet-footer">
                     By Intelligence Cubed
                 </div>
-
             </div>
         </div>
     </div>
@@ -638,8 +636,9 @@
     <script src="wallet-integration.js"></script>
     <script src="account-dropdown.js"></script>
     <script type="module" src="chains.js"></script>
-    <script type="module" src="solana-wallet.js"></script>
-    <script type="module" src="solana-checkin.js"></script>
+    <!-- Solana-only scripts removed in Pharos-only build -->
+    <!-- <script type="module" src="solana-wallet.js"></script> -->
+    <!-- <script type="module" src="solana-checkin.js"></script> -->
     <script src="onchain-checkin.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function(){

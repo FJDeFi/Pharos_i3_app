@@ -212,7 +212,7 @@
         // 上传到Storage
         window.uploadToStorage = async function() {
             if (!selectedFile) {
-                alert('请先选择文件');
+                alert('Please select a file first');
                 return;
             }
 
@@ -306,7 +306,7 @@
         // 显示统计信息
         window.showStats = function() {
             if (!modelData) {
-                alert('请先下载数据');
+                alert('Please download data first');
                 return;
             }
             
@@ -328,7 +328,7 @@
         // 清除数据
         window.clearData = function() {
             modelData = null;
-            document.getElementById('dataPreview').innerHTML = '<p>数据已清除...</p>';
+            document.getElementById('dataPreview').innerHTML = '<p>Data cleared...</p>';
             document.getElementById('statsSection').style.display = 'none';
             updateStatus('dataStatus', '数据已清除', 'info');
         };

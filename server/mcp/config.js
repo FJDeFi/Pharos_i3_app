@@ -2,34 +2,42 @@ const path = require('path');
 
 // 网络配置映射
 const NETWORK_CONFIGS = {
-  'solana-mainnet': {
-    network: 'solana-mainnet',
-    mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC Mainnet mint
-    explorerBaseUrl: 'https://explorer.solana.com/tx',
-    rpcUrl: 'https://mainnet.helius-rpc.com/?api-key=fd6a5779-892d-47eb-a88b-bc961ca4b606'
-  },
-  'solana-devnet': {
-    network: 'solana-devnet',
-    mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // USDC Devnet mint
-    explorerBaseUrl: 'https://explorer.solana.com/tx', // cluster 参数在生成链接时添加
-    rpcUrl: 'https://api.devnet.solana.com'
+  'pharos-testnet': {
+    network: 'pharos-testnet',
+    // 这里不再配置 mint，因为我们使用的是原生 PHRS
+    explorerBaseUrl: 'https://pharos-testnet.socialscan.io/tx',
+    rpcUrl:
+      'https://api.zan.top/node/v1/pharos/testnet/35905838255149eaa94c610c79294f0f',
+    tokenType: 'native',
+    decimals: 18
   }
 };
 
 // 默认网络（mainnet）
-const DEFAULT_NETWORK = process.env.X402_NETWORK || 'solana-mainnet';
+const DEFAULT_NETWORK = process.env.X402_NETWORK || 'pharos-testnet';
 
 const MCP_CONFIG = {
   payments: {
     network: DEFAULT_NETWORK,
-    mint: NETWORK_CONFIGS[DEFAULT_NETWORK]?.mint || NETWORK_CONFIGS['solana-mainnet'].mint,
+    // 对于 Pharos testnet，我们使用原生 PHRS 作为支付币
+    tokenType: NETWORK_CONFIGS[DEFAULT_NETWORK]?.tokenType || 'native',
+    // 收款地址：可以通过环境变量覆盖
     recipient:
       process.env.X402_RECIPIENT ||
-      'FWSVwBwtyN3mFY96cR3myCbsNYawdyZRyX1W29nsFqYV',
+      '0x49e0329808559a9aa742a3cf01cec9b773a53834',
     paymentUrl: process.env.X402_PAYMENT_URL || null,
-    explorerBaseUrl: NETWORK_CONFIGS[DEFAULT_NETWORK]?.explorerBaseUrl || NETWORK_CONFIGS['solana-mainnet'].explorerBaseUrl,
-    rpcUrl: NETWORK_CONFIGS[DEFAULT_NETWORK]?.rpcUrl || NETWORK_CONFIGS['solana-mainnet'].rpcUrl,
-    decimals: Number(process.env.X402_DECIMALS || 6),
+    explorerBaseUrl:
+      NETWORK_CONFIGS[DEFAULT_NETWORK]?.explorerBaseUrl ||
+      'https://pharos-testnet.socialscan.io/tx',
+    rpcUrl:
+      NETWORK_CONFIGS[DEFAULT_NETWORK]?.rpcUrl ||
+      'https://api.zan.top/node/v1/pharos/testnet/35905838255149eaa94c610c79294f0f',
+    // PHRS 默认使用 18 位精度
+    decimals: Number(
+      process.env.X402_DECIMALS ||
+        NETWORK_CONFIGS[DEFAULT_NETWORK]?.decimals ||
+        18
+    ),
     expiresInSeconds: Number(process.env.X402_EXPIRES_SECONDS || 300)
   },
   billing: {
@@ -42,18 +50,19 @@ const MCP_CONFIG = {
 
 // 根据请求头获取网络配置
 function getNetworkConfigFromRequest(req) {
-  const networkHeader = req.headers['x-solana-network'] || req.body?.network || DEFAULT_NETWORK;
-  const networkKey = networkHeader === 'mainnet-beta' ? 'solana-mainnet' : 
-                     networkHeader === 'devnet' ? 'solana-devnet' :
-                     networkHeader;
+  const networkHeader =
+    req.headers['x-pharos-network'] ||
+    req.body?.network ||
+    DEFAULT_NETWORK;
+  const networkKey = networkHeader || DEFAULT_NETWORK;
   const config = NETWORK_CONFIGS[networkKey] || NETWORK_CONFIGS[DEFAULT_NETWORK];
-  
   return {
     ...MCP_CONFIG.payments,
     network: config.network,
-    mint: config.mint,
     explorerBaseUrl: config.explorerBaseUrl,
-    rpcUrl: config.rpcUrl
+    rpcUrl: config.rpcUrl,
+    decimals: config.decimals ?? MCP_CONFIG.payments.decimals,
+    tokenType: config.tokenType || MCP_CONFIG.payments.tokenType
   };
 }
 

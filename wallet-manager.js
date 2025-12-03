@@ -254,16 +254,16 @@ class WalletManager {
 	  }
 	}
 
-		// 获取Solana USDC余额
-	async updateUSDCBalance() {
+		// 获取Solana PHRS余额
+	async updatePHRSBalance() {
 		try {
 			const usdcDisplay = document.getElementById('usdcDisplay');
 			if (!usdcDisplay || !this.solanaConn || !this.solanaAddress) {
 				return;
 			}
 
-			// Solana USDC mint地址 (从配置读取，默认为mainnet)
-			const USDC_MINT = (window.APP_CONFIG && window.APP_CONFIG.solana && window.APP_CONFIG.solana.usdcMint) || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+			// Solana PHRS mint地址 (从配置读取，默认为mainnet)
+			const PHRS_MINT = (window.APP_CONFIG && window.APP_CONFIG.solana && window.APP_CONFIG.solana.usdcMint) || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 			
 			// 动态导入 @solana/spl-token
 			const { getAssociatedTokenAddress, getAccount } = await import('https://esm.sh/@solana/spl-token@0.4.8');
@@ -275,7 +275,7 @@ class WalletManager {
 			}
 
 			const walletPubkey = new PublicKey(this.solanaAddress);
-			const usdcMintPubkey = new PublicKey(USDC_MINT);
+			const usdcMintPubkey = new PublicKey(PHRS_MINT);
 			
 			// 获取关联的token账户地址
 			const tokenAccountAddress = await getAssociatedTokenAddress(
@@ -286,28 +286,28 @@ class WalletManager {
 			try {
 				// 获取token账户信息
 				const tokenAccount = await getAccount(this.solanaConn, tokenAccountAddress);
-				const balance = Number(tokenAccount.amount) / 1e6; // USDC有6位小数
+				const balance = Number(tokenAccount.amount) / 1e6; // PHRS有6位小数
 				const rounded = balance.toFixed(2);
 				
 				usdcDisplay.style.display = 'inline';
-				usdcDisplay.textContent = `${rounded} USDC`;
-				console.log('USDC balance:', rounded);
+				usdcDisplay.textContent = `${rounded} PHRS`;
+				console.log('PHRS balance:', rounded);
 			} catch (err) {
 				// Token账户不存在或余额为0
 				if (err.name === 'TokenAccountNotFoundError') {
 					usdcDisplay.style.display = 'inline';
-					usdcDisplay.textContent = '0.00 USDC';
-					console.log('USDC balance: 0.00 (no token account)');
+					usdcDisplay.textContent = '0.00 PHRS';
+					console.log('PHRS balance: 0.00 (no token account)');
 				} else {
 					throw err;
 				}
 			}
 		} catch (error) {
-			console.warn('Failed to fetch USDC balance:', error);
+			console.warn('Failed to fetch PHRS balance:', error);
 			const usdcDisplay = document.getElementById('usdcDisplay');
 			if (usdcDisplay) {
 				usdcDisplay.style.display = 'inline';
-				usdcDisplay.textContent = '-- USDC';
+				usdcDisplay.textContent = '-- PHRS';
 			}
 		}
 	}
@@ -894,7 +894,7 @@ disconnectWallet() {
 			}
 		}));
 
-		console.log(`Daily checkin successful! Earned ${DAILY_REWARD} USDC.`, claimResult);
+		console.log(`Daily checkin successful! Earned ${DAILY_REWARD} PHRS.`, claimResult);
 
 		return {
 			success: true,
@@ -1083,9 +1083,9 @@ disconnectWallet() {
 				accountBtnText.textContent =
 					`${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`;
 			}
-			// 已连接 —— 如果是Solana钱包，显示USDC余额
+			// 已连接 —— 如果是Solana钱包，显示PHRS余额
 			if (usdcDisplay && this.walletType && this.walletType.includes('solana')) {
-				this.updateUSDCBalance();
+				this.updatePHRSBalance();
 			} else if (usdcDisplay) {
 				usdcDisplay.style.display = 'none';
 			}
@@ -1126,7 +1126,7 @@ disconnectWallet() {
 			}
 			if (checkinStatus) checkinStatus.style.display = 'block';
 		} else {
-			// 未连接 —— 只显示 Login，隐藏 USDC
+			// 未连接 —— 只显示 Login，隐藏 PHRS
 			if (accountBtnText) {
 				accountBtnText.textContent = 'Login';
 			}

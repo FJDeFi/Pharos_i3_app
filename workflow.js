@@ -1,7 +1,7 @@
 // Workflow Page JavaScript
 
 const WORKFLOW_PRICING_DEFAULTS = (window.PricingUtils && window.PricingUtils.constants) || {
-    currency: 'USDC',
+    currency: 'PHRS',
     pricePerApiCallUsdc: 0.0008,
     gasEstimatePerCallUsdc: 0.00025,
     sharePurchaseMinUsdc: 1,
@@ -16,7 +16,7 @@ function workflowFormatUsdc(value, options = {}) {
     const num = Number(value || 0);
     const min = options.minimumFractionDigits ?? 4;
     const max = options.maximumFractionDigits ?? 6;
-    return `${num.toFixed(Math.min(Math.max(min, 0), max))} USDC`;
+    return `${num.toFixed(Math.min(Math.max(min, 0), max))} PHRS`;
 }
 
 function getWorkflowModelPricing(modelName) {
@@ -232,7 +232,7 @@ function enrichWorkflowPricing(workflowList) {
 // Current user's assets (from myAssets localStorage)
 let userAssets = {};
 
-// Helper: get current wallet credits (USDC balance)
+// Helper: get current wallet credits (PHRS balance)
 function getWalletCredits() {
     try {
         if (window.walletManager && typeof window.walletManager.getUserInfo === 'function') {
@@ -278,12 +278,12 @@ function checkWalletConnection() {
     return {
         connected: userInfo.isConnected,
         address: userInfo.address,
-        tokens: userInfo.credits, // 统一使用 USDC 余额
+        tokens: userInfo.credits, // 统一使用 PHRS 余额
         error: userInfo.isConnected ? null : 'Please connect your wallet first'
     };
 }
 
-// 验证用户是否有足够的 USDC 余额 - 复制自mycart.js
+// 验证用户是否有足够的 PHRS 余额 - 复制自mycart.js
 function validatePayment(totalCost) {
     const walletStatus = checkWalletConnection();
     
@@ -299,7 +299,7 @@ function validatePayment(totalCost) {
     if (walletStatus.tokens < totalCost) {
         return {
             valid: false,
-            error: `Insufficient USDC balance. You need ${totalCost} USDC but only have ${walletStatus.tokens} USDC.`,
+            error: `Insufficient PHRS balance. You need ${totalCost} PHRS but only have ${walletStatus.tokens} PHRS.`,
             required: totalCost,
             available: walletStatus.tokens
         };
@@ -455,7 +455,6 @@ function hideTokenPurchaseModal() {
     modal.classList.remove('show');
 }
 
-// 修复后的placeOrder函数 - 在这里进行所有验证
 async function placeOrder() {
     const modal = document.getElementById('tokenPurchaseModal');
     const workflowId = parseInt(modal.dataset.workflowId);
@@ -463,7 +462,7 @@ async function placeOrder() {
     
     if (!workflow) return;
     
-    // 1. 首先检查钱包连接状态
+    // 1. 检查钱包连接
     const walletStatus = checkWalletConnection();
     if (!walletStatus.connected) {
         alert('⚠️ Please connect your MetaMask wallet first to proceed with payment.\n\nClick "Login" → "Connect Wallet"');
@@ -473,45 +472,92 @@ async function placeOrder() {
     // 2. 计算缺失tokens的总成本
     const missingTokens = checkMissingTokens(workflow);
     const totalCost = missingTokens.reduce((sum, token) => sum + token.cost, 0);
-    const requestId = generateWorkflowPaymentRequestId();
     
-    // 3. 验证支付能力
-    const paymentValidation = validatePayment(totalCost);
-    if (!paymentValidation.valid) {
-        alert(`❌ Payment Failed!\n\n${paymentValidation.error}\n\n💡 Tip: Daily check-in grants +0.01 USDC.\n\nTransaction cancelled.`);
-        return;
-    }
     
-    // 4. 402 付款流程（Phantom）
-    let paymentResult;
+    // 4. 使用 MCPClient.executeWorkflow 执行整个 workflow
+    let workflowResult;
     try {
-        paymentResult = await settleWorkflowInvoice(totalCost, workflow, requestId);
+        if (!window.MCPClient || typeof window.MCPClient.executeWorkflow !== 'function') {
+            throw new Error('MCPClient not available. Please refresh the page.');
+        }
+        
+        console.log('[Workflow] Starting workflow execution:', workflow.name);
+        
+        // 构造 workflow payload
+        const workflowPayload = {
+            workflow_id: workflow.id,
+            workflow_name: workflow.name,
+            workflow_description: workflow.description,
+            nodes: workflow.models.map(model => ({
+                name: model.name,
+                calls: model.tokens || 1,
+                tokens: model.tokens || 1
+            })),
+            wallet_address: walletStatus.address,
+            metadata: {
+                source: 'workflow_purchase',
+                user_wallet: walletStatus.address,
+                workflow_id: workflow.id
+            }
+        };
+        
+        // 调用 MCPClient.executeWorkflow（它会自动处理多次 402 循环）
+        workflowResult = await window.MCPClient.executeWorkflow(workflowPayload, {
+            onInvoice: (invoice) => {
+                console.log('[Workflow] Received invoice:', invoice);
+                // 可以在这里显示支付进度
+            },
+            onPayment: (invoice, tx) => {
+                console.log('[Workflow] Payment settled:', tx);
+            },
+            onResult: (result) => {
+                console.log('[Workflow] Node completed:', result);
+            }
+        });
+        
+        console.log('[Workflow] Workflow execution result:', workflowResult);
+        
+        // 检查结果状态
+        if (!workflowResult) {
+            throw new Error('No result returned from workflow execution');
+        }
+        
+        if (workflowResult.status === 'cancelled') {
+            console.log('[Workflow] User cancelled payment');
+            return;
+        }
+        
+        if (workflowResult.status !== 'ok') {
+            const errorMsg = workflowResult.error?.message || 
+                           workflowResult.message || 
+                           workflowResult.status ||
+                           'Workflow execution failed';
+            throw new Error(errorMsg);
+        }
+        
     } catch (error) {
         const errorMsg = error?.message || String(error);
-        // 如果是余额不足，显示充值提示弹窗
-        if (errorMsg.includes('no SOL') || errorMsg.includes('has no SOL') || errorMsg.includes('insufficient') || errorMsg.includes('add SOL') || errorMsg.includes('wallet has no')) {
-            if (typeof showInsufficientBalanceModal === 'function') {
-                showInsufficientBalanceModal(errorMsg);
-            } else {
-                alert(`⚠️ Insufficient Balance!\n\n${errorMsg}\n\nPlease add SOL to your wallet and try again.`);
-            }
+        console.error('[Workflow] Execution error:', error);
+        
+        // 区分不同类型的错误
+        if (errorMsg.includes('cancelled') || errorMsg.includes('user denied') || errorMsg.includes('User rejected')) {
+            console.log('[Workflow] User cancelled workflow execution');
+            return;
+        } else if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+            alert(`⚠️ Insufficient Balance!\n\n${errorMsg}\n\nPlease add PHRS to your wallet and try again.`);
         } else {
-            alert(`❌ Payment Processing Failed!\n\n${errorMsg}\n\nTransaction cancelled.`);
+            alert(`❌ Workflow Execution Failed!\n\n${errorMsg}\n\nPlease try again.`);
         }
-        return;
-    }
-    if (!paymentResult || !paymentResult.success) {
-        // 用户取消或失败已在 settleWorkflowInvoice 中记录
         return;
     }
     
     // 5. 扣减本地账户余额
     const spendResult = window.walletManager.spendCredits(totalCost, 'workflow_tokens_purchase');
     if (!spendResult.success) {
-        alert(`⚠️ Payment settled on-chain, but failed to update local credits: ${spendResult.error}`);
+        console.warn('[Workflow] Failed to update local credits:', spendResult.error);
     }
     
-    // 6. 更新用户资产 (添加购买的tokens)
+    // 6. 更新用户资产
     missingTokens.forEach(token => {
         userAssets[token.name] = (userAssets[token.name] || 0) + token.required;
     });
@@ -520,7 +566,7 @@ async function placeOrder() {
     updateUserAssetsInStorage();
     
     // 8. 显示成功消息
-    alert(`🎉 Purchase Successful!\n\n💳 Payment: ${totalCost.toFixed(6)} USDC\n📊 Workflow: ${workflow.name}\n🎯 Models: ${workflow.modelCount}`);
+    alert(`🎉 Workflow Purchase Successful!\n\n💳 Total Cost: ${totalCost.toFixed(6)} PHRS\n📊 Workflow: ${workflow.name}\n🎯 Models: ${workflow.modelCount}\n\n✅ Tokens have been added to your account!`);
     
     // 9. Hide modal
     hideTokenPurchaseModal();
@@ -533,21 +579,39 @@ async function placeOrder() {
     workflow.prepaidAt = new Date().toISOString();
     workflow.prepaidAmountUsdc = Number(totalCost.toFixed(6));
     workflow.prepaidModels = (workflow.models || []).map(m => m.name);
-    workflow.lastPaymentTx = paymentResult.signature || null;
-    workflow.lastPaymentExplorer = paymentResult.explorer || null;
     workflow.lastPaymentAt = workflow.prepaidAt;
-    workflow.lastPaymentMemo = requestId;
     
+    // 从 workflowResult 中提取交易信息
+    const history = workflowResult.history || [];
+    const payments = history.filter(h => h.type === 'payment');
+    if (payments.length > 0) {
+        const lastPayment = payments[payments.length - 1];
+        workflow.lastPaymentTx = lastPayment.tx;
+        
+        // 构造 explorer URL
+        const explorerBase = 'https://pharos-testnet.socialscan.io/tx';
+        workflow.lastPaymentExplorer = `${explorerBase}/${lastPayment.tx}`;
+        workflow.lastPaymentMemo = lastPayment.invoice?.request_id || null;
+        
+        // 显示交易链接
+        showWorkflowExplorerToast(
+            workflow.lastPaymentTx, 
+            totalCost, 
+            workflow.lastPaymentExplorer
+        );
+    }
+    
+    workflow.workflowResult = workflowResult;
+    
+    // 12. 记录日志
     if (window.MCPClient && typeof window.MCPClient.logStatus === 'function') {
-        window.MCPClient.logStatus('payment', 'Workflow payment settled', {
+        window.MCPClient.logStatus('paid', 'Workflow completed', {
             amount: totalCost.toFixed(6),
-            memo: requestId,
-            tx: workflow.lastPaymentTx,
-            explorer: paymentResult.explorer
+            workflow: workflow.name
         });
     }
-    showWorkflowExplorerToast(workflow.lastPaymentTx, totalCost, paymentResult.explorer);
     
+    // 13. 提示用户打开 Canvas
     offerCanvasNavigation(workflow);
 }
 
@@ -753,13 +817,25 @@ function tryWorkflow(workflowId) {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
-    const missingTokens = checkMissingTokens(workflow);
-    if (missingTokens.length) {
-        showTokenPurchaseModal(workflow, missingTokens);
-        return;
-    }
+    // 显示选择对话框
+    const choice = confirm(
+        `Choose payment method for "${workflow.name}":\n\n` +
+        `OK = Prepay once (${workflow.totalPrice.toFixed(4)} PHRS total, 1 transaction)\n` +
+        `Cancel = Pay per node (${workflow.models.length} separate transactions)`
+    );
 
-    loadWorkflowToCanvas(workflow);
+    if (choice) {
+        // 预付费模式
+        purchaseAndPrepayWorkflow(workflow);
+    } else {
+        // 原有模式
+        const missingTokens = checkMissingTokens(workflow);
+        if (missingTokens.length) {
+            showTokenPurchaseModal(workflow, missingTokens);
+            return;
+        }
+        loadWorkflowToCanvas(workflow);
+    }
 }
 
 // Load workflow to canvas
@@ -803,6 +879,12 @@ function loadWorkflowToCanvas(workflow) {
     };
     localStorage.setItem('currentWorkflow', JSON.stringify(currentWorkflow));
     
+    // ✅ 清除旧的初始化标记，确保后续流程正常
+    try {
+        localStorage.removeItem(`wfInit:${workflow.name}`);
+        if (workflow.runId) localStorage.removeItem(`wfInit:${workflow.runId}`);
+    } catch (_) {}
+    
     // Redirect to canvas page
     window.location.href = 'canvas.html';
 }
@@ -814,102 +896,6 @@ window.hideWorkflowDetailsModal = hideWorkflowDetailsModal;
 window.tryWorkflow = tryWorkflow;
 window.hideTokenPurchaseModal = hideTokenPurchaseModal;
 
-function generateWorkflowPaymentRequestId() {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-    return 'wf-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-function generateWorkflowPaymentNonce() {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-    return 'wf-nonce-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-async function settleWorkflowInvoice(totalCost, workflow, requestId) {
-    const client = window.MCPClient;
-    if (!client || typeof client.settleInvoice !== 'function') {
-        throw new Error('402 payment client unavailable. Please ensure MCP client is loaded.');
-    }
-
-    const normalizedAmount = Number(totalCost.toFixed(6));
-    const appConfig = window.APP_CONFIG || {};
-    const sol = appConfig.solana || {};
-    if (!sol.merchantAddress || !sol.usdcMint || !sol.rpcEndpoint) {
-        throw new Error('Solana payment configuration is incomplete.');
-    }
-    const decimals = Number(sol.usdcDecimals || 6);
-    const explorerBase =
-        (appConfig.mcp && appConfig.mcp.receiptExplorerBaseUrl) ||
-        `https://explorer.solana.com/tx?cluster=${encodeURIComponent(sol.cluster || 'devnet')}`;
-
-    const invoice = {
-        status: 'payment_required',
-        request_id: requestId,
-        nonce: generateWorkflowPaymentNonce(),
-        amount_usdc: normalizedAmount,
-        currency: 'USDC',
-        recipient: sol.merchantAddress,
-        mint: sol.usdcMint,
-        decimals,
-        memo: requestId,
-        description: `Workflow token purchase: ${workflow.name}`,
-        rpc_endpoint: sol.rpcEndpoint,
-        explorer_base_url: explorerBase
-    };
-
-    const logStatus =
-        client && typeof client.logStatus === 'function'
-            ? client.logStatus.bind(client)
-            : null;
-
-    logStatus?.('invoice', `Workflow payment request: ${workflow.name}`, {
-        amount: normalizedAmount.toFixed(6),
-        memo: requestId,
-        description: 'Processing workflow checkout'
-    });
-
-    try {
-        const signature = await client.settleInvoice(invoice);
-        if (!signature) {
-            logStatus?.('cancel', 'Workflow payment cancelled by user', {
-                amount: normalizedAmount.toFixed(6),
-                memo: requestId
-            });
-            return { success: false, cancelled: true };
-        }
-
-        let explorerUrl = `https://explorer.solana.com/tx/${encodeURIComponent(
-            signature
-        )}?cluster=${encodeURIComponent(sol.cluster || 'devnet')}`;
-        if (invoice.explorer_base_url) {
-            if (invoice.explorer_base_url.includes('?')) {
-                const [prefix, query] = invoice.explorer_base_url.split('?');
-                explorerUrl = `${prefix.replace(/\/$/, '')}/${encodeURIComponent(
-                    signature
-                )}?${query}`;
-            } else {
-                explorerUrl = `${invoice.explorer_base_url.replace(/\/$/, '')}/${encodeURIComponent(
-                    signature
-                )}`;
-            }
-        }
-
-        return {
-            success: true,
-            signature,
-            explorer: explorerUrl
-        };
-    } catch (error) {
-        logStatus?.('cancel', `Workflow payment failed: ${error?.message || error}`, {
-            amount: normalizedAmount.toFixed(6),
-            memo: requestId
-        });
-        throw error;
-    }
-}
 
 function showWorkflowExplorerToast(signature, amount, explorerUrlOverride) {
     try {
@@ -923,7 +909,7 @@ function showWorkflowExplorerToast(signature, amount, explorerUrlOverride) {
         toast.innerHTML = `
             <button class="workflow-payment-toast__close" aria-label="Dismiss">×</button>
             <h4>Workflow Payment Settled</h4>
-            <p>Amount: <strong>${Number(amount).toFixed(6)} USDC</strong></p>
+            <p>Amount: <strong>${Number(amount).toFixed(6)} PHRS</strong></p>
             <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer">View on Solana Explorer →</a>
         `;
         const close = toast.querySelector('.workflow-payment-toast__close');
@@ -967,7 +953,7 @@ function offerCanvasNavigation(workflow) {
                         ${shortTx}
                     </a>
                     <p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">
-                        ${workflow.prepaidAmountUsdc ? `Amount: ${workflow.prepaidAmountUsdc.toFixed(6)} USDC` : ''}
+                        ${workflow.prepaidAmountUsdc ? `Amount: ${workflow.prepaidAmountUsdc.toFixed(6)} PHRS` : ''}
                     </p>
                 </div>
             `;
@@ -998,4 +984,379 @@ function offerCanvasNavigation(workflow) {
         console.warn('Failed to show canvas navigation modal', err);
         loadWorkflowToCanvas(workflow);
     }
+}
+
+// ========== Workflow 预付费功能 ==========
+
+async function purchaseAndPrepayWorkflow(workflow) {
+    try {
+        const walletAddress = await getConnectedWallet();
+        if (!walletAddress) {
+            alert('Please connect your wallet first');
+            return;
+        }
+
+        // 步骤 1: 请求预付费发票
+        const invoiceResponse = await fetch('/mcp/workflow.prepay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                wallet_address: walletAddress,
+                workflow: { name: workflow.name },
+                nodes: workflow.models.map(m => ({
+                    name: m.name,
+                    calls: m.tokens || 1
+                }))
+            })
+        });
+
+        const invoiceData = await invoiceResponse.json();
+        if (invoiceResponse.status !== 402) {
+            throw new Error(invoiceData.message || 'Failed to get invoice');
+        }
+
+        console.log('📋 x402 Invoice received:', invoiceData);
+
+        // 步骤 2: 立即显示 402 发票弹窗 (在支付之前!)
+        const paymentResult = await show402InvoiceModal(invoiceData, workflow);
+        if (!paymentResult) {
+            console.log('User cancelled payment');
+            return;
+        }
+
+        console.log('✅ Payment successful:', paymentResult);
+
+        // 步骤 3: 提交支付凭证
+        const paymentHeader = `x402 ${invoiceData.network}; tx=${paymentResult.hash}; amount=${invoiceData.amount_usdc}; nonce=${invoiceData.nonce}`;
+
+        const confirmResponse = await fetch('/mcp/workflow.prepay', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Payment': paymentHeader,
+                'X-Request-Id': invoiceData.request_id
+            },
+            body: JSON.stringify({
+                wallet_address: walletAddress,
+                workflow: { name: workflow.name },
+                nodes: workflow.models.map(m => ({
+                    name: m.name,
+                    calls: m.tokens || 1
+                }))
+            })
+        });
+
+        const confirmData = await confirmResponse.json();
+        if (confirmData.status !== 'ok') {
+            throw new Error(confirmData.message || 'Payment verification failed');
+        }
+
+        console.log('✅ Workflow prepaid successfully!');
+        
+        // 保存数据
+        workflow.prepaid = true;
+        workflow.workflowSessionId = confirmData.workflow_session_id;
+        workflow.prepaidAmountUsdc = confirmData.amount_usdc;
+        workflow.lastPaymentTx = confirmData.tx_signature;
+        workflow.lastPaymentExplorer = confirmData.explorer;
+        workflow.prepaidAt = confirmData.settled_at;
+
+        localStorage.setItem('selectedWorkflow', JSON.stringify(workflow));
+
+        showWorkflowExplorerToast(confirmData.tx_signature, confirmData.amount_usdc, confirmData.explorer);
+        offerCanvasNavigation(workflow);
+
+    } catch (error) {
+        console.error('❌ Prepayment failed:', error);
+        alert(`Payment failed: ${error.message}`);
+    }
+}
+
+// 修改后的 402 发票弹窗 - 在弹窗内完成支付
+function show402InvoiceModal(invoice, workflow) {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'modal show';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        
+        const costBreakdown = invoice.cost_breakdown || [];
+        const breakdownHtml = costBreakdown.map(node => `
+            <tr>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${node.name}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${node.calls}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${node.total_cost.toFixed(6)} PHRS</td>
+            </tr>
+        `).join('');
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:16px;padding:32px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <h2 style="margin:0;color:#1a1a1a;flex:1;">💰 x402 Payment Invoice</h2>
+                    <span style="background:#e7f3ff;color:#3498db;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;">x402 PROTOCOL</span>
+                </div>
+                
+                <div style="background:#f8f9fa;padding:20px;border-radius:12px;margin-bottom:20px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                        <span style="color:#666;">Workflow:</span>
+                        <strong>${workflow.name}</strong>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                        <span style="color:#666;">Total Nodes:</span>
+                        <strong>${invoice.workflow.node_count}</strong>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                        <span style="color:#666;">Network:</span>
+                        <strong>${invoice.network}</strong>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding-top:12px;border-top:2px solid #dee2e6;">
+                        <span style="color:#666;font-size:18px;">Total Amount:</span>
+                        <strong style="color:#2ecc71;font-size:20px;">${invoice.amount_usdc.toFixed(6)} PHRS</strong>
+                    </div>
+                </div>
+
+                <details style="margin-bottom:20px;">
+                    <summary style="cursor:pointer;padding:12px;background:#f8f9fa;border-radius:8px;font-weight:500;">
+                        📊 Cost Breakdown (${costBreakdown.length} nodes)
+                    </summary>
+                    <table style="width:100%;margin-top:12px;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="padding:8px;text-align:left;">Node</th>
+                                <th style="padding:8px;text-align:center;">Calls</th>
+                                <th style="padding:8px;text-align:right;">Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${breakdownHtml}
+                        </tbody>
+                    </table>
+                </details>
+
+                <div style="background:#fff3cd;padding:16px;border-radius:8px;margin-bottom:20px;border-left:4px solid #ffc107;">
+                    <strong>⚡ Pay Once, Execute All!</strong>
+                    <p style="margin:8px 0 0 0;color:#666;font-size:14px;">
+                        After this single payment, you can execute all ${invoice.workflow.node_count} nodes without any additional transactions.
+                    </p>
+                </div>
+
+                <div style="background:#e7f3ff;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #3498db;">
+                    <div style="font-size:13px;color:#555;">
+                        <div style="margin-bottom:8px;"><strong>📍 Recipient:</strong><br>
+                        <code style="background:#fff;padding:4px 8px;border-radius:4px;font-size:11px;word-break:break-all;">${invoice.recipient}</code></div>
+                        <div style="margin-bottom:8px;"><strong>🔒 Request ID:</strong><br>
+                        <code style="background:#fff;padding:4px 8px;border-radius:4px;font-size:11px;word-break:break-all;">${invoice.request_id}</code></div>
+                        <div style="margin-bottom:8px;"><strong>🔗 Explorer:</strong><br>
+                        <code style="background:#fff;padding:4px 8px;border-radius:4px;font-size:11px;word-break:break-all;">${invoice.explorer_base_url}</code></div>
+                        <div><strong>⏱️ Expires:</strong> ${new Date(invoice.expires_at).toLocaleString()}</div>
+                    </div>
+                </div>
+
+                <!-- 支付状态区域 -->
+                <div id="payment-status" style="display:none;background:#d4edda;padding:16px;border-radius:8px;margin-bottom:20px;border-left:4px solid #28a745;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:20px;">✅</span>
+                        <strong style="color:#155724;">Payment Successful!</strong>
+                    </div>
+                    <div style="font-size:13px;color:#155724;">
+                        <div style="margin-bottom:4px;"><strong>Tx Hash:</strong><br>
+                        <code id="tx-hash" style="background:#fff;padding:4px 8px;border-radius:4px;font-size:11px;word-break:break-all;"></code></div>
+                        <a id="explorer-link" href="#" target="_blank" rel="noopener noreferrer" 
+                           style="color:#007bff;text-decoration:none;font-weight:500;">
+                            🔍 View on Explorer →
+                        </a>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:12px;">
+                    <button id="cancel-btn" style="flex:1;padding:14px;border:2px solid #ddd;background:white;border-radius:8px;cursor:pointer;font-size:16px;font-weight:500;">
+                        Cancel
+                    </button>
+                    <button id="pay-btn" style="flex:2;padding:14px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;font-weight:500;">
+                        💳 Pay ${invoice.amount_usdc.toFixed(6)} PHRS
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const cancelBtn = modal.querySelector('#cancel-btn');
+        const payBtn = modal.querySelector('#pay-btn');
+        const paymentStatus = modal.querySelector('#payment-status');
+
+        cancelBtn.onclick = () => {
+            modal.remove();
+            resolve(null);
+        };
+
+        payBtn.onclick = async () => {
+            try {
+                // 禁用按钮
+                payBtn.disabled = true;
+                payBtn.style.opacity = '0.6';
+                payBtn.style.cursor = 'not-allowed';
+                payBtn.innerHTML = '⏳ Processing...';
+
+                // 发起支付
+                const tx = await sendPharosPayment(
+                    invoice.recipient,
+                    invoice.amount_usdc,
+                    invoice.decimals || 18
+                );
+
+                console.log('💰 Payment tx:', tx.hash);
+
+                // 生成 explorer URL
+                const explorerUrl = `${invoice.explorer_base_url}/${tx.hash}`;
+
+                // 显示支付成功状态
+                paymentStatus.style.display = 'block';
+                modal.querySelector('#tx-hash').textContent = tx.hash;
+                modal.querySelector('#explorer-link').href = explorerUrl;
+
+                // 更新按钮
+                payBtn.innerHTML = '✅ Payment Confirmed';
+                payBtn.style.background = '#28a745';
+                
+                // 隐藏取消按钮
+                cancelBtn.style.display = 'none';
+
+                // 2秒后自动关闭并返回结果
+                setTimeout(() => {
+                    modal.remove();
+                    resolve(tx);
+                }, 2000);
+
+            } catch (error) {
+                console.error('Payment error:', error);
+                payBtn.disabled = false;
+                payBtn.style.opacity = '1';
+                payBtn.style.cursor = 'pointer';
+                payBtn.innerHTML = `💳 Pay ${invoice.amount_usdc.toFixed(6)} PHRS`;
+                alert(`Payment failed: ${error.message}`);
+            }
+        };
+
+        // Click outside to cancel
+        modal.onclick = (e) => {
+            if (e.target === modal && !payBtn.disabled) {
+                modal.remove();
+                resolve(null);
+            }
+        };
+    });
+}
+
+async function executePrepaidWorkflow(workflow) {
+    if (!workflow.prepaid || !workflow.workflowSessionId) {
+        alert('Workflow not prepaid');
+        return;
+    }
+
+    const walletAddress = await getConnectedWallet();
+    const results = [];
+    const totalNodes = workflow.models.length;
+
+    showExecutionProgress(0, totalNodes, 'Starting...');
+
+    for (let i = 0; i < totalNodes; i++) {
+        updateExecutionProgress(i, totalNodes, `Executing ${workflow.models[i].name}...`);
+
+        const response = await fetch('/mcp/workflow.execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workflow_session_id: workflow.workflowSessionId,
+                wallet_address: walletAddress,
+                workflow: { name: workflow.name },
+                nodes: workflow.models.map(m => ({
+                    name: m.name,
+                    calls: m.tokens || 1
+                }))
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'continue') {
+            results.push(data.previous_node);
+            updateExecutionProgress(i + 1, totalNodes, `${data.progress.completed}/${data.progress.total_nodes} completed`);
+        } else if (data.status === 'ok') {
+            results.push(data.final_node);
+            updateExecutionProgress(totalNodes, totalNodes, 'Completed!');
+            break;
+        } else {
+            throw new Error(data.message || 'Execution failed');
+        }
+
+        await new Promise(r => setTimeout(r, 500));
+    }
+
+    hideExecutionProgress();
+    alert(`✅ Workflow completed! Executed ${results.length} nodes.`);
+}
+
+async function sendPharosPayment(recipient, amountUsdc, decimals) {
+    if (!window.ethereum) throw new Error('MetaMask not installed');
+    
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const amountWei = ethers.utils.parseUnits(amountUsdc.toString(), decimals);
+
+    const tx = await signer.sendTransaction({
+        to: recipient,
+        value: amountWei
+    });
+
+    await tx.wait();
+    return tx;
+}
+
+async function getConnectedWallet() {
+    if (!window.ethereum) return null;
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    return accounts[0];
+}
+
+// UI 辅助函数
+function showPrepayProgress(msg) {
+    const modal = document.createElement('div');
+    modal.id = 'prepay-progress';
+    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:10000;min-width:400px;text-align:center;';
+    modal.innerHTML = `<h3 style="margin-top:0;">Workflow Prepayment</h3><div class="spinner" style="margin:20px auto;border:4px solid #f3f3f3;border-top:4px solid #3498db;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;"></div><p id="prepay-msg">${msg}</p><style>@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>`;
+    document.body.appendChild(modal);
+}
+
+function updatePrepayProgress(msg) {
+    const el = document.getElementById('prepay-msg');
+    if (el) el.textContent = msg;
+}
+
+function hidePrepayProgress() {
+    const modal = document.getElementById('prepay-progress');
+    if (modal) modal.remove();
+}
+
+function showExecutionProgress(current, total, msg) {
+    const modal = document.createElement('div');
+    modal.id = 'exec-progress';
+    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:10000;min-width:400px;text-align:center;';
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    modal.innerHTML = `<h3 style="margin-top:0;">Executing Workflow</h3><div style="margin:20px 0;"><div style="background:#f0f0f0;height:24px;border-radius:12px;overflow:hidden;"><div id="exec-bar" style="background:linear-gradient(90deg,#3498db,#2ecc71);height:100%;width:${pct}%;transition:width 0.3s;"></div></div><p style="margin-top:10px;font-weight:bold;"><span id="exec-count">${current}/${total}</span> (${pct}%)</p></div><p id="exec-msg">${msg}</p>`;
+    document.body.appendChild(modal);
+}
+
+function updateExecutionProgress(current, total, msg) {
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    const bar = document.getElementById('exec-bar');
+    const count = document.getElementById('exec-count');
+    const msgEl = document.getElementById('exec-msg');
+    if (bar) bar.style.width = `${pct}%`;
+    if (count) count.textContent = `${current}/${total}`;
+    if (msgEl) msgEl.textContent = msg;
+}
+
+function hideExecutionProgress() {
+    const modal = document.getElementById('exec-progress');
+    if (modal) modal.remove();
 }

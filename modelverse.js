@@ -14,7 +14,7 @@ const MODELVERSE_PRICING = (window.PricingUtils && window.PricingUtils.constants
   sharePurchaseMaxUsdc: 20
 };
 
-const USDC_ICON_PATH = 'svg/usdc.svg';
+const PHRS_ICON_PATH = 'svg/chains/pharos.jpg';
 
 function formatNumeric(value, decimals) {
   const num = Number(value);
@@ -30,7 +30,7 @@ function renderUsdcBadge(value, decimals = 5) {
     return '<span class="usdc-amount">—</span>';
   }
   const formatted = formatNumeric(value, decimals);
-  return `<span class="usdc-amount">${formatted}</span><img src="${USDC_ICON_PATH}" alt="USDC" class="usdc-icon" loading="lazy">`;
+  return `<span class="usdc-amount">${formatted}</span><img src="${PHRS_ICON_PATH}" alt="PHRS" class="usdc-icon" loading="lazy">`;
 }
 
 function formatUsdc(value, options = {}) {
@@ -40,7 +40,7 @@ function formatUsdc(value, options = {}) {
   const num = Number(value || 0);
   const min = options.minimumFractionDigits ?? 4;
   const max = options.maximumFractionDigits ?? 6;
-  return `${num.toFixed(Math.min(Math.max(min, 0), max))} USDC`;
+  return `${num.toFixed(Math.min(Math.max(min, 0), max))} PHRS`;
 }
 
 function getModelCallPricing(modelData) {
@@ -227,7 +227,7 @@ function showModelCardForRow(rowEl) {
 // Main entry
 function showModelCard(modelName, signOverride) {
   if (typeof getModelData !== 'function') {
-    alert('Error: model-data.js 未正确加载');
+    alert('Error: model-data.js not properly loaded');
     return;
   }
   const data = getModelData(modelName);
@@ -238,7 +238,7 @@ function showModelCard(modelName, signOverride) {
 
   const modal = document.getElementById('modelCartModal');
   if (!modal) {
-    alert('缺少模态框 HTML，请插入模态框片段。');
+    alert('Missing modal HTML, please insert modal fragment.');
     return;
   }
   const $ = (sel) => modal.querySelector(sel);

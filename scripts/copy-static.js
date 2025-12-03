@@ -15,7 +15,7 @@ const FILES = [
   'onchain-checkin.js',
   'social-tasks.js',
   'contract-config.js',
-  'svg/usdc.svg'
+  'svg/chains/pharos.jpg'
 ];
 
 function ensureDir(filePath) {

@@ -3,14 +3,14 @@
 console.log('🚀 加载 Benchmark 页面...');
 
 const BENCHMARK_PRICING = (window.PricingUtils && window.PricingUtils.constants) || {
-    currency: 'USDC',
+    currency: 'PHRS',
     pricePerApiCallUsdc: 0.0008,
     gasEstimatePerCallUsdc: 0.00025,
     sharePurchaseMinUsdc: 1,
     sharePurchaseMaxUsdc: 20
 };
 
-const USDC_ICON_PATH = 'svg/usdc.svg';
+const PHRS_ICON_PATH = 'svg/chains/pharos.jpg';
 
 function formatNumeric(value, decimals) {
     const num = Number(value);
@@ -26,7 +26,7 @@ function renderUsdcBadge(value, decimals = 5) {
         return '<span class="usdc-amount">—</span>';
     }
     const formatted = formatNumeric(value, decimals);
-    return `<span class="usdc-amount">${formatted}</span><img src="${USDC_ICON_PATH}" alt="USDC" class="usdc-icon" loading="lazy">`;
+    return `<span class="usdc-amount">${formatted}</span><img src="${PHRS_ICON_PATH}" alt="PHRS" class="usdc-icon" loading="lazy">`;
 }
 
 function formatUsdc(value, options = {}) {
@@ -532,7 +532,7 @@ function drawDonutChart(percent = 0) {
 // 显示 Model Card 函数
 function showModelCard(modelName, signOverride) {
     if (typeof getModelData !== 'function') {
-        alert('Error: model-data.js 未正确加载');
+        alert('Error: model-data.js not properly loaded');
         return;
     }
     const data = getModelData(modelName);
@@ -543,7 +543,7 @@ function showModelCard(modelName, signOverride) {
 
     const modal = document.getElementById('modelCartModal');
     if (!modal) {
-        alert('缺少模态框 HTML，请插入模态框片段。');
+        alert('Missing modal HTML, please insert modal fragment.');
         return;
     }
     const $ = (sel) => modal.querySelector(sel);
@@ -632,7 +632,7 @@ function populateBenchmarkTable(models) {
     }
     
     console.log('✅ 找到表格tbody，开始填充数据...');
-    console.log('📊 HTML表头列数: 10列 (MODEL, CATEGORY, INDUSTRY, PRICE / API CALL (USDC), SHARE PRICE (USDC), MARKET CHANGE, USAGE, COMPATIBILITY, TOTAL SCORE, ACTION)');
+    console.log('📊 HTML表头列数: 10列 (MODEL, CATEGORY, INDUSTRY, PRICE / API CALL (PHRS), SHARE PRICE (PHRS), MARKET CHANGE, USAGE, COMPATIBILITY, TOTAL SCORE, ACTION)');
     
     // 清空现有内容
     tableBody.innerHTML = '';

@@ -1,4 +1,4 @@
-// Pricing utilities for USDC-based billing
+// Pricing utilities for PHRS-based billing
 const PRICING_CONSTANTS = {
   pricePerApiCallUsdc: 0.0008,
   gasEstimatePerCallUsdc: 0.00025,
@@ -12,7 +12,7 @@ function formatUsdcAmount(amount, options = {}) {
   const minimumFractionDigits = options.minimumFractionDigits ?? 4;
   const maximumFractionDigits = options.maximumFractionDigits ?? 6;
   const min = Math.min(Math.max(minimumFractionDigits, 0), maximumFractionDigits);
-  return `${value.toFixed(min)} USDC`;
+  return `${value.toFixed(min)} PHRS`;
 }
 
 function calculateModelCallCostUsdc(callCount = 1, overrides = {}) {
@@ -43,7 +43,7 @@ function normalizeModelPricing(model = {}) {
   const sharePrice = clampSharePrice(shareFromModel);
 
   return {
-    currency: 'USDC',
+    currency: 'PHRS',
     pricePerCallUsdc: pricePerCall,
     gasPerCallUsdc: gas,
     sharePriceUsdc: sharePrice,
