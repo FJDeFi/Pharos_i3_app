@@ -881,7 +881,24 @@ function getAddChainParams(preferred) {
     },
   };
   const base = MAP[preferred.chainId] || { chainName: preferred.name, rpcUrls: [] };
-  return { chainId: preferred.chainId, chainName: base.chainName, rpcUrls: base.rpcUrls, nativeCurrency:{name:'ETH',symbol:'ETH',decimals:18} };
+  
+  // 为 Pharos Testnet 使用 PHRS 作为原生货币，其他链使用 ETH
+  const nativeCurrency = preferred.chainId === '0xa8230' 
+    ? {name:'Pharos',symbol:'PHRS',decimals:18}
+    : {name:'ETH',symbol:'ETH',decimals:18};
+  
+  // 为 Pharos Testnet 添加区块浏览器 URL
+  const blockExplorerUrls = preferred.chainId === '0xa8230' 
+    ? ['https://pharos-testnet.socialscan.io']
+    : undefined;
+  
+  return { 
+    chainId: preferred.chainId, 
+    chainName: base.chainName, 
+    rpcUrls: base.rpcUrls, 
+    nativeCurrency,
+    ...(blockExplorerUrls && { blockExplorerUrls })
+  };
 }
 
 console.log('✅ Unified wallet connection function loaded');
@@ -1227,3 +1244,124 @@ window.closeOnChainCheckInModal = closeOnChainCheckInModal;
 window.executeOnChainCheckIn = executeOnChainCheckIn;
 
 console.log('✅ On-chain check-in modal functions loaded');
+
+// ===== 更新 Pharos Testnet 配置（PHRS 货币单位）=====
+async function updatePharosNetworkInMetaMask() {
+  try {
+    const provider = window.walletManager?.getMetaMaskProvider?.() || window.ethereum;
+    if (!provider) {
+      throw new Error('MetaMask 未检测到。请安装 MetaMask 扩展程序。');
+    }
+
+    const pharosConfig = {
+      chainId: '0xa8230',
+      chainName: 'Pharos Testnet',
+      rpcUrls: ['https://api.zan.top/node/v1/pharos/testnet/35905838255149eaa94c610c79294f0f'],
+      nativeCurrency: {
+        name: 'Pharos',
+        symbol: 'PHRS',
+        decimals: 18
+      },
+      blockExplorerUrls: ['https://pharos-testnet.socialscan.io']
+    };
+
+    console.log('🔄 正在更新 Pharos Testnet 配置到 MetaMask...');
+    
+    // 先尝试切换到该网络（如果已存在）
+    try {
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0xa8230' }]
+      });
+    } catch (switchError) {
+      // 如果网络不存在（错误代码 4902），则添加网络
+      if (switchError.code === 4902) {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [pharosConfig]
+        });
+      } else {
+        throw switchError;
+      }
+    }
+
+    // 再次添加/更新网络配置以确保使用最新的货币符号
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [pharosConfig]
+    });
+
+    console.log('✅ Pharos Testnet 配置已更新！货币单位现在显示为 PHRS。');
+    
+    if (typeof showNotification === 'function') {
+      showNotification('Pharos Testnet 已更新！现在使用 PHRS 作为货币单位。', 'success');
+    } else {
+      alert('✅ Pharos Testnet 已更新！现在使用 PHRS 作为货币单位。');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('更新 Pharos Testnet 配置失败:', error);
+    
+    const errorMsg = error.code === 4001 
+      ? '您取消了网络更新。' 
+      : `更新失败: ${error.message}`;
+    
+    if (typeof showNotification === 'function') {
+      showNotification(errorMsg, 'error');
+    } else {
+      alert('❌ ' + errorMsg);
+    }
+    
+    return false;
+  }
+}
+
+// 导出到全局，方便在控制台调用
+window.updatePharosNetworkInMetaMask = updatePharosNetworkInMetaMask;
+
+console.log('✅ Pharos 网络更新函数已加载');
+console.log('💡 提示: 如果您之前添加过 Pharos Testnet，请在浏览器控制台运行 updatePharosNetworkInMetaMask() 来更新货币单位为 PHRS');
+
+// 检查用户是否需要更新网络配置
+async function checkAndPromptNetworkUpdate() {
+  try {
+    const provider = window.walletManager?.getMetaMaskProvider?.() || window.ethereum;
+    if (!provider) return;
+
+    // 检查是否已经提示过
+    const hasPrompted = localStorage.getItem('pharos_network_update_prompted');
+    if (hasPrompted === 'true') return;
+
+    // 检查用户当前的链 ID
+    const currentChainId = await provider.request({ method: 'eth_chainId' });
+    
+    // 如果用户在 Pharos Testnet 上，检查是否需要更新
+    if (currentChainId === '0xa8230') {
+      // 延迟3秒后显示提示，避免在页面加载时立即弹出
+      setTimeout(() => {
+        if (typeof showNotification === 'function') {
+          showNotification(
+            '💡 提示: 点击右上角的网络徽章，然后点击"更新 MetaMask 中的 Pharos 网络"按钮，将支付单位更新为 PHRS！',
+            'info',
+            10000  // 显示 10 秒
+          );
+        }
+        
+        // 标记已提示
+        localStorage.setItem('pharos_network_update_prompted', 'true');
+      }, 3000);
+    }
+  } catch (error) {
+    console.log('检查网络更新状态时出错:', error);
+  }
+}
+
+// 在页面加载完成后检查
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(checkAndPromptNetworkUpdate, 2000);
+  });
+} else {
+  setTimeout(checkAndPromptNetworkUpdate, 2000);
+}
