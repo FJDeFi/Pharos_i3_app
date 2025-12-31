@@ -1290,25 +1290,25 @@ async function updatePharosNetworkInMetaMask() {
       // 网络已存在 - 由于 MetaMask 限制，无法直接更新货币符号
       // 需要提示用户手动操作
       const message = `
-⚠️ 重要提示：
+⚠️ Important Notice:
 
-由于 MetaMask 的限制，无法直接更新已存在网络的货币符号。
+Due to MetaMask limitations, the currency symbol for an existing network cannot be updated directly.
 
-请按以下步骤手动更新：
+Please follow these steps to manually update:
 
-1️⃣ 打开 MetaMask
-2️⃣ 点击顶部的 "Pharos Testnet" 网络名称
-3️⃣ 在网络列表中找到 "Pharos Testnet"，点击右侧的三个点 (⋮)
-4️⃣ 选择 "删除" 或 "Delete"
-5️⃣ 回到本页面，重新点击更新按钮
+1️⃣ Open MetaMask
+2️⃣ Click on "Pharos Testnet" network name at the top
+3️⃣ Find "Pharos Testnet" in the network list, click the three dots (⋮) on the right
+4️⃣ Select "Delete" or "Remove"
+5️⃣ Return to this page and click the update button again
 
-📌 或者，您也可以继续使用当前网络，虽然显示 ETH，但实际支付的是 PHRS。
+📌 Alternatively, you can continue using the current network. Although it shows ETH, the actual payment is in PHRS.
       `;
       
-      const shouldContinue = confirm(message + '\n\n是否继续添加新的 Pharos Testnet 配置？\n（注意：需要先手动删除旧网络）');
+      const shouldContinue = confirm(message + '\n\nWould you like to continue adding the new Pharos Testnet configuration?\n(Note: You need to manually delete the old network first)');
       
       if (!shouldContinue) {
-        console.log('用户取消了更新操作');
+        console.log('User cancelled the update operation');
         return false;
       }
     }
@@ -1320,12 +1320,12 @@ async function updatePharosNetworkInMetaMask() {
         params: [pharosConfig]
       });
       
-      console.log('✅ Pharos Testnet 配置已添加/更新！货币单位现在显示为 PHRS。');
+      console.log('✅ Pharos Testnet configuration added/updated! Currency unit is now displayed as PHRS.');
       
       if (typeof showNotification === 'function') {
-        showNotification('✅ Pharos Testnet 已配置！现在使用 PHRS 作为货币单位。刷新页面后生效。', 'success');
+        showNotification('✅ Pharos Testnet configured! Now using PHRS as currency unit. Refresh the page for it to take effect.', 'success');
       } else {
-        alert('✅ Pharos Testnet 已配置！现在使用 PHRS 作为货币单位。\n\n请刷新页面后再进行支付。');
+        alert('✅ Pharos Testnet configured! Now using PHRS as currency unit.\n\nPlease refresh the page before making payments.');
       }
       
       return true;

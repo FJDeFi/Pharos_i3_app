@@ -5404,7 +5404,7 @@
                 const btn = document.getElementById('googleSignInBtn');
                 if (btn) btn.style.display = 'none';
                 const status = document.getElementById('googleSignInStatus');
-                if (status) status.textContent = `已登录: ${user.email}`;
+                if (status) status.textContent = `Logged in: ${user.email}`;
             })();
             
             // 保持钱包连接部分可见（元素可能不存在）
@@ -6003,7 +6003,7 @@
                 const info = document.getElementById('walletInfo');
                 if (info) {
                     info.style.display = 'block';
-                    info.textContent = `已连接钱包：${address}${chainId ? `（链ID: ${chainId}）` : ''}`;
+                    info.textContent = `Wallet Connected: ${address}${chainId ? ` (Chain ID: ${chainId})` : ''}`;
                 }
 
                 // Log client-side connection time
