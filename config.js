@@ -22,10 +22,10 @@ const config = {
 
     // MCP / payment service configuration
     mcp: {
-        baseUrl: 'http://localhost:3000',
+        baseUrl: (typeof window !== 'undefined' && window.location) ? window.location.origin : 'http://localhost:3000',
         receiptExplorerBaseUrl: 'https://explorer.solana.com/tx'
     },
-    mcpBaseUrl: 'http://localhost:3000',
+    mcpBaseUrl: (typeof window !== 'undefined' && window.location) ? window.location.origin : 'http://localhost:3000',
 
     // Solana payment rails
     solana: {

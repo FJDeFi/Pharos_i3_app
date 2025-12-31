@@ -1,6 +1,7 @@
 (function () {
   const MCP_NAMESPACE = 'mcp';
-  const DEFAULT_BASE_URL = 'http://localhost:3000';
+  // 自动检测基础URL：开发环境使用localhost，生产环境使用当前域名
+  const DEFAULT_BASE_URL = window.location.origin;
   const CONFIGURED_BASE_URL =
     (window.APP_CONFIG && (window.APP_CONFIG.mcpBaseUrl || window.APP_CONFIG?.mcp?.baseUrl)) ||
     DEFAULT_BASE_URL;
