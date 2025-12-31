@@ -1267,39 +1267,90 @@ async function updatePharosNetworkInMetaMask() {
 
     console.log('🔄 正在更新 Pharos Testnet 配置到 MetaMask...');
     
-    // 先尝试切换到该网络（如果已存在）
+    // 检查网络是否已存在
+    let networkExists = false;
     try {
       await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: '0xa8230' }]
       });
+      networkExists = true;
+      console.log('✅ Pharos Testnet 已存在于 MetaMask 中');
     } catch (switchError) {
-      // 如果网络不存在（错误代码 4902），则添加网络
       if (switchError.code === 4902) {
-        await provider.request({
-          method: 'wallet_addEthereumChain',
-          params: [pharosConfig]
-        });
+        // 网络不存在，直接添加
+        console.log('📝 Pharos Testnet 不存在，正在添加...');
+        networkExists = false;
       } else {
         throw switchError;
       }
     }
 
-    // 再次添加/更新网络配置以确保使用最新的货币符号
-    await provider.request({
-      method: 'wallet_addEthereumChain',
-      params: [pharosConfig]
-    });
+    if (networkExists) {
+      // 网络已存在 - 由于 MetaMask 限制，无法直接更新货币符号
+      // 需要提示用户手动操作
+      const message = `
+⚠️ 重要提示：
 
-    console.log('✅ Pharos Testnet 配置已更新！货币单位现在显示为 PHRS。');
-    
-    if (typeof showNotification === 'function') {
-      showNotification('Pharos Testnet 已更新！现在使用 PHRS 作为货币单位。', 'success');
-    } else {
-      alert('✅ Pharos Testnet 已更新！现在使用 PHRS 作为货币单位。');
+由于 MetaMask 的限制，无法直接更新已存在网络的货币符号。
+
+请按以下步骤手动更新：
+
+1️⃣ 打开 MetaMask
+2️⃣ 点击顶部的 "Pharos Testnet" 网络名称
+3️⃣ 在网络列表中找到 "Pharos Testnet"，点击右侧的三个点 (⋮)
+4️⃣ 选择 "删除" 或 "Delete"
+5️⃣ 回到本页面，重新点击更新按钮
+
+📌 或者，您也可以继续使用当前网络，虽然显示 ETH，但实际支付的是 PHRS。
+      `;
+      
+      const shouldContinue = confirm(message + '\n\n是否继续添加新的 Pharos Testnet 配置？\n（注意：需要先手动删除旧网络）');
+      
+      if (!shouldContinue) {
+        console.log('用户取消了更新操作');
+        return false;
+      }
     }
 
-    return true;
+    // 添加网络（新网络或用户确认要添加）
+    try {
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [pharosConfig]
+      });
+      
+      console.log('✅ Pharos Testnet 配置已添加/更新！货币单位现在显示为 PHRS。');
+      
+      if (typeof showNotification === 'function') {
+        showNotification('✅ Pharos Testnet 已配置！现在使用 PHRS 作为货币单位。刷新页面后生效。', 'success');
+      } else {
+        alert('✅ Pharos Testnet 已配置！现在使用 PHRS 作为货币单位。\n\n请刷新页面后再进行支付。');
+      }
+      
+      return true;
+    } catch (addError) {
+      if (addError.code === -32602 || addError.message?.includes('already exists')) {
+        // 网络已存在的错误
+        const helpMessage = `
+⚠️ Pharos Testnet 已存在但使用旧配置
+
+要更新为 PHRS 单位，请手动操作：
+
+1. 打开 MetaMask
+2. 点击顶部网络名称
+3. 找到 "Pharos Testnet"，点击 ⋮ 
+4. 选择 "删除"
+5. 回到本页面重新添加
+
+或者继续使用当前配置（虽然显示 ETH，实际是 PHRS）
+        `;
+        alert(helpMessage);
+        return false;
+      }
+      throw addError;
+    }
+
   } catch (error) {
     console.error('更新 Pharos Testnet 配置失败:', error);
     
@@ -1317,11 +1368,102 @@ async function updatePharosNetworkInMetaMask() {
   }
 }
 
-// 导出到全局，方便在控制台调用
+// 显示详细的更新指南
+function showPharosUpdateGuide() {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.7); z-index: 999999; 
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Inter', -apple-system, sans-serif;
+  `;
+  
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 20px; padding: 32px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 style="margin: 0; color: #1a1a1a; font-size: 24px; font-weight: 700;">
+          🔄 更新 Pharos 网络配置
+        </h2>
+        <button onclick="this.closest('div[style*=fixed]').remove()" 
+                style="border: none; background: none; font-size: 28px; color: #666; cursor: pointer; padding: 0; width: 32px; height: 32px;">
+          ×
+        </button>
+      </div>
+      
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 16px; margin-bottom: 24px; border-radius: 8px;">
+        <strong style="color: #856404;">⚠️ 重要说明</strong>
+        <p style="margin: 8px 0 0; color: #856404; font-size: 14px;">
+          由于 MetaMask 限制，必须先删除旧的 Pharos Testnet 网络，然后重新添加才能显示 PHRS 单位。
+        </p>
+      </div>
+      
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #333; font-size: 18px; margin: 0 0 16px;">📝 操作步骤：</h3>
+        
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: start;">
+          <div style="background: #667eea; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700;">1</div>
+          <div style="flex: 1;">
+            <strong style="color: #1a1a1a; display: block; margin-bottom: 4px;">打开 MetaMask</strong>
+            <p style="margin: 0; color: #666; font-size: 14px;">点击浏览器右上角的 MetaMask 扩展图标</p>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: start;">
+          <div style="background: #667eea; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700;">2</div>
+          <div style="flex: 1;">
+            <strong style="color: #1a1a1a; display: block; margin-bottom: 4px;">删除旧网络</strong>
+            <p style="margin: 0; color: #666; font-size: 14px;">
+              • 点击顶部的 "Pharos Testnet" 网络名称<br>
+              • 在网络列表中找到 "Pharos Testnet"<br>
+              • 点击右侧的三个点 <strong>⋮</strong><br>
+              • 选择 <strong>"删除"</strong> 或 <strong>"Delete"</strong>
+            </p>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: start;">
+          <div style="background: #667eea; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700;">3</div>
+          <div style="flex: 1;">
+            <strong style="color: #1a1a1a; display: block; margin-bottom: 4px;">重新添加网络</strong>
+            <p style="margin: 0 0 12px; color: #666; font-size: 14px;">删除后，点击下方按钮自动添加新配置：</p>
+            <button onclick="updatePharosNetworkInMetaMask()" 
+                    style="width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+              🚀 添加 Pharos Testnet (PHRS)
+            </button>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; align-items: start;">
+          <div style="background: #10b981; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700;">✓</div>
+          <div style="flex: 1;">
+            <strong style="color: #1a1a1a; display: block; margin-bottom: 4px;">完成！</strong>
+            <p style="margin: 0; color: #666; font-size: 14px;">刷新页面后，所有支付将显示 PHRS 单位</p>
+          </div>
+        </div>
+      </div>
+      
+      <div style="background: #e7f3ff; border-radius: 8px; padding: 16px; margin-top: 24px;">
+        <strong style="color: #0066cc; font-size: 14px;">💡 提示</strong>
+        <p style="margin: 8px 0 0; color: #0066cc; font-size: 13px;">
+          如果不想手动删除，可以继续使用当前网络。虽然显示 "ETH"，但实际支付的是 Pharos 代币 (PHRS)，不影响功能。
+        </p>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+// 导出到全局
 window.updatePharosNetworkInMetaMask = updatePharosNetworkInMetaMask;
+window.showPharosUpdateGuide = showPharosUpdateGuide;
 
 console.log('✅ Pharos 网络更新函数已加载');
-console.log('💡 提示: 如果您之前添加过 Pharos Testnet，请在浏览器控制台运行 updatePharosNetworkInMetaMask() 来更新货币单位为 PHRS');
+console.log('💡 提示: 运行 showPharosUpdateGuide() 查看详细更新指南');
+console.log('💡 提示: 运行 updatePharosNetworkInMetaMask() 快速添加/更新网络');
 
 // 检查用户是否需要更新网络配置
 async function checkAndPromptNetworkUpdate() {
