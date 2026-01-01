@@ -52,8 +52,7 @@ Where AI models are both **Model-as-a-Service (MaaS)** and **liquid, revenue-sha
     - [Frontend (Vite dev server)](#frontend-vite-dev-server)
     - [Backend / MCP server](#backend--mcp-server)
     - [Production Build](#production-build)
-12. [Roadmap](#-roadmap)
-13. [License](#-license)
+12. [License](#-license)
 
 ---
 # Intelligence Cubed (i³)
@@ -745,7 +744,7 @@ Add Pharos Testnet to MetaMask with the following settings:
 | Network Name | Pharos Testnet |
 | RPC URL | `https://testnet.dplabs-internal.com` |
 | Chain ID | `688688` |
-| Currency Symbol | ETH |
+| Currency Symbol | PHRS |
 | Block Explorer | `https://pharos-testnet.socialscan.io` |
 
 ### Clone & Install
@@ -828,26 +827,6 @@ In production, you typically:
 
 1. `npm run build`
 2. `npm start` (or `node serve.js`) behind a reverse proxy.
-
----
-
-## 🔮 Roadmap
-
-* **Mainnet deployment** with production-grade RPC and observability.
-* **Model provider onboarding**:
-
-  * Let external developers list models/workflows with their own x402 pricing and recipient addresses.
-* **More wallets & platforms**:
-
-  * Support additional EVM-compatible wallets (WalletConnect, Coinbase Wallet, etc.) and mobile-first flows.
-* **Agent API**:
-
-  * Document and expose MCP endpoints so external AI agents can programmatically:
-
-    * Discover models
-    * Quote prices
-    * Pay with x402
-    * Invoke models and workflows
 
 ---
 
